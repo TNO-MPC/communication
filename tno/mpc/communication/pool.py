@@ -147,9 +147,7 @@ class Pool:
         """
         await self._get_handler(handler_name).send(message, msg_id)
 
-    def arecv(
-        self, handler_name: str, msg_id: Optional[str] = None
-    ) -> "Future[Dict[str, Any]]":
+    def arecv(self, handler_name: str, msg_id: Optional[str] = None) -> "Future[Any]":
         """
         Receive a message synchronously from a peer.
 
@@ -159,9 +157,7 @@ class Pool:
         """
         return self._get_handler(handler_name).recv(msg_id)
 
-    async def recv(
-        self, handler_name: str, msg_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+    async def recv(self, handler_name: str, msg_id: Optional[str] = None) -> Any:
         """
         Receive a message asynchronously from a peer. Ensures result.
 

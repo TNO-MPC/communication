@@ -14,7 +14,7 @@ from typing import cast, Any, Awaitable, Callable, Dict, Optional, Union, TYPE_C
 import aiohttp
 from aiohttp import web, payload
 
-import tno  # to make sphinx find Pool correctly
+import tno.mpc.communication  # to make sphinx find Pool correctly
 from tno.mpc.communication.functions import init, trim_string
 
 from .communication import (
@@ -27,8 +27,6 @@ from .communication import (
 if TYPE_CHECKING:
     from tno.mpc.communication import Pool
 
-if TYPE_CHECKING:
-    from .pool import Pool
 
 logger = init(__name__, logger_level=logging.INFO)
 

@@ -4,17 +4,22 @@ The TNO MPC lab consists of generic software components, procedures, and functio
 
 The package tno.mpc.communication is part of the TNO Python Toolbox.
 
-*Remark: This cryptography software may not be used in applications that violate international export control legislations.*
+*Limitations in (end-)use: the content of this repository may solely be used for applications that comply with international export control laws.*
 
 ## Documentation
 
-Documentation of the tno.mpc.communication package can be found [here](https://docs.mpc.tno.nl/communication/1.0.4).
+Documentation of the tno.mpc.communication package can be found [here](https://docs.mpc.tno.nl/communication/1.1.0).
 
 ## Install
 
 Easily install the tno.mpc.communication package using pip:
 ```console
 $ python -m pip install tno.mpc.communication
+```
+
+If you wish to run the tests you can use:
+```console
+$ python -m pip install 'tno.mpc.communication[tests]'
 ```
 
 ## Usage
