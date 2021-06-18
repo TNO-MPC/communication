@@ -3,13 +3,17 @@ This module tests the communication between two communication pools.
 """
 
 import asyncio
-from typing import Tuple
+from typing import Dict, Tuple, cast
 
 import pytest
 
-from tno.mpc.communication import init_pool, Pool
+from tno.mpc.communication import Pool, Serialization, init_pool
 from tno.mpc.communication.test import (  # pylint: disable=unused-import
     fixture_pool_http_2p,
+)
+from tno.mpc.communication.test.test_packing import (
+    ClassCorrectKwargs,
+    ClassCorrectKwargs2,
 )
 
 
@@ -177,6 +181,57 @@ async def test_http_server_collection(pool_http_2p: Tuple[Pool, Pool]) -> None:
 
 
 @pytest.mark.asyncio
+async def test_http_server_custom_kwargs(pool_http_2p: Tuple[Pool, Pool]) -> None:
+    """
+    Tests asynchronous sending and receiving of a custom object making use of keyword arguments
+    between two communication pools
+
+    :param pool_http_2p: collection of two communication pools
+    """
+    ClassCorrectKwargs.origin = []
+    ClassCorrectKwargs.destination = []
+    Serialization.clear_new_serialization_logic()
+    Serialization.set_serialization_logic(ClassCorrectKwargs)
+    obj = ClassCorrectKwargs([1, 2, 3, 4], "test")
+    pool_http_2p[0].asend("local1", obj)
+    res = await pool_http_2p[1].recv("local0")
+    assert isinstance(obj, type(res))
+    assert res.name == obj.name
+    assert res.values == obj.values
+    assert ClassCorrectKwargs.destination[0] == pool_http_2p[0].pool_handlers["local1"]
+    assert ClassCorrectKwargs.origin[0] == pool_http_2p[1].pool_handlers["local0"]
+    ClassCorrectKwargs.origin = []
+    ClassCorrectKwargs.destination = []
+
+
+@pytest.mark.asyncio
+async def test_http_server_custom_kwargs2(pool_http_2p: Tuple[Pool, Pool]) -> None:
+    """
+    Tests asynchronous sending and receiving of a custom object making use of keyword arguments
+    between two communication pools
+
+    :param pool_http_2p: collection of two communication pools
+    """
+    ClassCorrectKwargs.origin = []
+    ClassCorrectKwargs.destination = []
+    Serialization.clear_new_serialization_logic()
+    Serialization.set_serialization_logic(ClassCorrectKwargs)
+    Serialization.set_serialization_logic(ClassCorrectKwargs2)
+    obj = ClassCorrectKwargs([1, 2, 3, 4], "test")
+    obj2 = ClassCorrectKwargs2([5, 6, 7, 8], obj)
+    pool_http_2p[0].asend("local1", obj2)
+    res = await pool_http_2p[1].recv("local0")
+    assert isinstance(obj2, type(res))
+    assert res.values == obj2.values
+    assert res.other.name == obj2.other.name
+    assert res.other.values == obj2.other.values
+    assert ClassCorrectKwargs.destination[0] == pool_http_2p[0].pool_handlers["local1"]
+    assert ClassCorrectKwargs.origin[0] == pool_http_2p[1].pool_handlers["local0"]
+    ClassCorrectKwargs.origin = []
+    ClassCorrectKwargs.destination = []
+
+
+@pytest.mark.asyncio
 async def test_http_server_monstrous_collection(
     pool_http_2p: Tuple[Pool, Pool]
 ) -> None:
@@ -201,6 +256,48 @@ async def test_http_server_monstrous_collection(
 
 
 @pytest.mark.asyncio
+async def test_http_server_monstrous_collection_with_custom_kwargs(
+    pool_http_2p: Tuple[Pool, Pool],
+) -> None:
+    """
+    Tests asynchronous sending and receiving of a complex collection containing an object with
+    custom serialization logic with required optional keyword arguments between two
+    communication pools
+
+    :param pool_http_2p: collection of two communication pools
+    """
+    ClassCorrectKwargs.origin = []
+    ClassCorrectKwargs.destination = []
+    Serialization.clear_new_serialization_logic()
+    Serialization.set_serialization_logic(ClassCorrectKwargs)
+    obj = ClassCorrectKwargs([1, 2, 3, 4], "test")
+    collection = [
+        {"x": obj},
+        [[1, 2], [3, 4], "5", 6],
+        "7",
+        "z",
+        {"8": 9, 10: "11", 12.1: 13.2},
+        {"14": 15, 16: "17", 18.1: 19.2},
+        [[[20], "21", 22.1], "13"],
+        ([1, 2], "3", 3.0, {"4": 5.0}, (6, 7)),
+    ]
+    pool_http_2p[0].asend("local1", collection)
+    res = await pool_http_2p[1].recv("local0")
+    res_obj = res.pop(0)["x"]
+    collection_obj = cast(Dict[str, ClassCorrectKwargs], collection.pop(0))["x"]
+    assert isinstance(collection, type(res))
+    assert res == collection
+
+    assert isinstance(collection_obj, type(res_obj))
+    assert res_obj.name == collection_obj.name
+    assert res_obj.values == collection_obj.values
+    assert ClassCorrectKwargs.destination[0] == pool_http_2p[0].pool_handlers["local1"]
+    assert ClassCorrectKwargs.origin[0] == pool_http_2p[1].pool_handlers["local0"]
+    ClassCorrectKwargs.origin = []
+    ClassCorrectKwargs.destination = []
+
+
+@pytest.mark.asyncio
 async def test_http_server_string(pool_http_2p: Tuple[Pool, Pool]) -> None:
     """
     Tests asynchronous sending and receiving of a string between two communication pools
@@ -216,7 +313,8 @@ async def test_http_server_string(pool_http_2p: Tuple[Pool, Pool]) -> None:
 @pytest.mark.asyncio
 async def test_http_server_custom_msg_id_int(pool_http_2p: Tuple[Pool, Pool]) -> None:
     """
-    Tests asynchronous sending and receiving of an int with a custom message id between two communication pools
+    Tests asynchronous sending and receiving of an int with a custom message id between two
+    communication pools
 
     :param pool_http_2p: collection of two communication pools
     """
@@ -230,7 +328,8 @@ async def test_http_server_custom_msg_id_string(
     pool_http_2p: Tuple[Pool, Pool]
 ) -> None:
     """
-    Tests asynchronous sending and receiving of a string with a custom message id between two communication pools
+    Tests asynchronous sending and receiving of a string with a custom message id between two
+    communication pools
 
     :param pool_http_2p: collection of two communication pools
     """
@@ -243,7 +342,8 @@ async def test_http_server_custom_msg_id_string(
 @pytest.mark.asyncio
 async def test_http_server_no_handler_send() -> None:
     """
-    Tests raising an AttributeError exception when the handler to send a message to is not part of the communication pool
+    Tests raising an AttributeError exception when the handler to send a message to is not part of
+    the communication pool
     """
     pool = init_pool()
     with pytest.raises(AttributeError):
@@ -253,7 +353,8 @@ async def test_http_server_no_handler_send() -> None:
 @pytest.mark.asyncio
 async def test_http_server_no_handler_recv() -> None:
     """
-    Tests raising an AttributeError exception when the handler to receive a message from is not part of the communication pool
+    Tests raising an AttributeError exception when the handler to receive a message from is not
+    part of the communication pool
     """
     pool = init_pool()
     with pytest.raises(AttributeError):

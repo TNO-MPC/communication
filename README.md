@@ -8,7 +8,7 @@ The package tno.mpc.communication is part of the TNO Python Toolbox.
 
 ## Documentation
 
-Documentation of the tno.mpc.communication package can be found [here](https://docs.mpc.tno.nl/communication/1.1.0).
+Documentation of the tno.mpc.communication package can be found [here](https://docs.mpc.tno.nl/communication/2.0.2).
 
 ## Install
 
@@ -24,25 +24,100 @@ $ python -m pip install 'tno.mpc.communication[tests]'
 
 ## Usage
 
-Make sure that the initialization and the usage of the pool occurs in the same event loop.
+The communication module uses `async` functions for sending and receiving. If you are familiar
+with the async module, you can skip to the `Pools` section.
+
+### Async explanation
+When `async` functions are called, they return what is called a *coroutine*.
+This is a special kind of object, because it is basically a promise that the code will be run and
+a result will be given when the coroutine is given to a so-called *event loop*.
+For example, see the following
+
+```python
+import asyncio
+
+async def add(a: int, b: int) -> int:
+    return a + b
+
+def main():
+    a,b = 1, 2
+    coroutine_object = add(a, b) # This is now a coroutine object of type Awaitable[int]
+    event_loop = asyncio.get_event_loop() # This is the event loop that will run the coroutine
+    result = event_loop.run_until_complete(coroutine_object) # This call starts the coroutine in the event loop
+    print(result) # this prints 3
+
+if __name__ == "__main__":
+    main()
+```
+
+As you can see from the example, the async methods are defined using `async def`, which tells python
+that it should return a coroutine. We saw how we can call an async function from a regular function
+using the event loop. *Note that you should never redefine the event loop and always retrieve the
+event loop as done in the example* (unless you know what you are doing). We can also call async
+functions from other async functions using the `await` statement, as is shown in the following example.
+
+```python
+import asyncio
+
+async def add_four_numbers(first: int, second: int, third: int, fourth: int) -> int:
+    first_second = await add(first, second) # This is blocking, so the function will wait until this is done
+    third_fourth_coroutine = add(third, fourth) # This is non-blocking, so the code will continue while the add(third,fourth) code starts running
+    # we can do some other stuff here
+    print("I am a print statement")
+    third_fourth = await third_fourth_coroutine # we wait until the add(third,fourth) is done
+    result = await add(first_second, third_fourth)
+    # here it is important to use await for the result, because then an integer is produced and given
+    # to the return statement instead of a coroutine
+    return result
+
+async def add(a: int, b: int) -> int:
+    return a + b
+
+def main():
+    a, b, c, d = 1, 2, 3, 4
+    coroutine_object = add_four_numbers(a, b, c, d) # This is now a coroutine object of type Awaitable[int]
+    event_loop = asyncio.get_event_loop() # This is the event loop that will run the coroutine
+    result = event_loop.run_until_complete(coroutine_object) # This call starts the coroutine in the event loop
+    print(result) # this prints 10
+
+if __name__ == "__main__":
+    main()
+```
+
+Note that the type of the `coroutine_object` in the `main` function is an `Awaitable[int]`.
+This refers to the fact that the result can be awaited (inside an `async` function) and will return an integer once that is done.
+
+### Pools
+A `Pool` represents a network. A Pool contains a server, which listens for incoming messages from
+other parties in the network, and clients for each other party in the network. These clients are
+called upon when we want to send or receive messages.
+
+It is also possible to use and initialize the pool without taking care of the event loop 
+yourself, in that case the template below can be ignored and the examples can be used as one 
+would regularly do. (An event loop is however still needed when using the `await` keyword or 
+when calling an `async` function.)
 
 ### Template
+Below you can find a template for using `Pool`. Alternatively, you could create the pool in the
+`main` logic and give it as a parameter to the `async_main` function.
+
 ```python
 import asyncio
 
 from tno.mpc.communication import Pool
 
-async def main():
+async def async_main():
     pool = Pool()
     # ...
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    loop.run_until_complete(async_main())
 ```
 
 ### Pool initialization
 
+The following logic works both in regular fuctions and `async` functions.
 #### Without SSL (do not use in production)
 ```python
 from tno.mpc.communication import Pool
@@ -74,32 +149,7 @@ The library supports sending the following objects through the send and receive 
 - floats 
 - (nested) lists/dictionaries/numpy arrays containing any of the above. Combinations of these as well.
 
-It is now also possible to define serialization logic in custom classes and load the logic into the commmunication module.
-The class has to have the following two methods. The type annotation is necessary for the communication module to validate the serialization logic.
-
-```python
-class SomeClass:
-    
-    def serialize(self) -> dict:
-        # serialization logic that returns a dictionary
-
-    @staticmethod
-    def deserialize(dictionary) -> 'SomeClass':
-        # deserialization logic that turns the dictionary produced
-        # by serialize back into an object of type SomeClass
-```
-
-To add this logic to the communication module, you have to run the following command at the start of your script. The `check_annotiations` parameter determines whether
-the type hints of the serialization code are checked. You should only change this to False *if you are exactly sure of what you're doing*.
-
-```python
-from tno.mpc.communication import communication
-
-if __name__=="__main__":
-    communication.Communication.set_serialization_logic(SomeClass, check_annotations=True)
-```
-
-Messages can be send both synchronously and asynchronously.
+Messages can be sent both synchronously and asynchronously.
 If you do not know which one to use, use the synchronous methods with `await`.
 
 ```python
@@ -120,3 +170,43 @@ await pool.send("Client 1", "Hello!", "Message ID 1")
 # Client 1
 res = await pool.recv("Client 0", "Message ID 1")
 ```
+
+### Custom serialization logic
+It is also possible to define serialization logic in custom classes and load the logic into the commmunication module. An example is given below. We elaborate on the requirements for such classes after the example.
+
+```python
+class SomeClass:
+    
+    def serialize(self, **kwargs: Any) -> Dict[str, Any]:
+        # serialization logic that returns a dictionary
+
+    @staticmethod
+    def deserialize(json_obj: Dict[str, Any], **kwargs: Any) -> 'SomeClass':
+        # deserialization logic that turns the dictionary produced
+        # by serialize back into an object of type SomeClass
+```
+
+The class needs to contain a `serialize` method and a `deserialize` method. The return type annotation is necessary for the 
+communication module to validate the serialization logic.
+Next to this, the `**kwargs` argument is also necessary to allow for (de)serialization that 
+makes use of additional optional keyword arguments. It is not necessary to use any of these optional keyword 
+arguments, but they should be passed on to any subsequent `Serialization.serialize()` or 
+`Serialization.deserialize()` call that is made in the custom `serialize` and/or `deserialize` 
+methods. If one does not make use of the `**kwargs` and also does not make a call to a subsequent 
+`Serialization.serialize()` or `Serialization.deserialize()`, it is advised to write 
+`**_kwargs: Any` instead of `**kwargs: Any`.
+
+
+
+To add this logic to the communication module, you have to run the following command at the start of your script. The `check_annotiations` parameter determines whether
+the type hints of the serialization code and the presence of a `**kwargs` parameter are checked. 
+You should only change this to False *if you are exactly sure of what you are doing*.
+
+```python
+from tno.mpc.communication import Serialization
+
+if __name__ == "__main__":
+   Serialization.set_serialization_logic(SomeClass, check_annotations=True)
+```
+
+

@@ -3,24 +3,25 @@ This module contains classes for the HTTP server and the HTTP client
 """
 
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import ssl
 import threading
 from asyncio import Future
-from typing import cast, Any, Awaitable, Callable, Dict, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional, Union, cast
 
 import aiohttp
-from aiohttp import web, payload
+from aiohttp import payload, web
 
-import tno.mpc.communication  # to make sphinx find Pool correctly
+import tno.mpc.communication  # to make sphinx find Pool correctly  # pylint: disable=unused-import
 from tno.mpc.communication.functions import init, trim_string
 
-from .communication import (
-    hinted_tuple_hook,
-    Communication,
+from .serialization import (
     MultiDimensionalArrayEncoder,
+    Serialization,
+    hinted_tuple_hook,
 )
 
 # to make mypy recognize pool (while not breaking sphinx or causing circular imports)
@@ -38,7 +39,7 @@ class HTTPClient:
 
     def __init__(
         self,
-        pool: "tno.mpc.communication.Pool",
+        pool: tno.mpc.communication.Pool,
         addr: str,
         port: int,
         ssl_ctx: Optional[ssl.SSLContext],
@@ -58,17 +59,28 @@ class HTTPClient:
         self.ssl_ctx = ssl_ctx
         if self.pool.http_server is None:
             raise AttributeError("No HTTP Server initialized (yet).")
+        self.session: aiohttp.ClientSession
         cookies = {"server_port": str(self.pool.http_server.port)}
-        self.session = aiohttp.ClientSession(
-            cookies=cookies,
-            json_serialize=MultiDimensionalArrayEncoder().encode,
-        )
+        if self.pool.loop.is_running():
+            self.pool.loop.create_task(self._create_client_session(cookies))
+        else:
+            self.pool.loop.run_until_complete(self._create_client_session(cookies))
         self.msg_send_counter = 0
         self.total_bytes_sent = 0
         self.msg_recv_counter = 0
         self.send_lock = threading.Lock()
         self.recv_lock = threading.Lock()
-        self.buffer: Dict[Union[str, int], "Future[Dict[str, Any]]"] = {}
+        self.buffer: Dict[Union[str, int], Future[Dict[str, Any]]] = {}
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Equality check for HTTP Clients
+        :param other: another HTTP Client
+        :return: whether they have the same address and port
+        """
+        if not isinstance(other, HTTPClient):
+            return False
+        return self.addr == other.addr and self.port == other.port
 
     async def shutdown(self) -> None:
         """
@@ -92,14 +104,28 @@ class HTTPClient:
         :param msg_id: an optional identifier of the message to send
         :param retry_delay: number of seconds to wait before retrying after failure
         """
-
         # Mutex lock
         if msg_id is None:
             with self.send_lock:
                 msg_id = self.msg_send_counter
                 self.msg_send_counter += 1
 
-        json_data = Communication.pack(message, msg_id)
+        json_data = Serialization.pack(message, msg_id, destination=self)
+        await self._send(json_data, retry_delay)
+
+    async def _send(
+        self,
+        json_data: Dict[str, Any],
+        retry_delay: int = 1,
+    ) -> None:
+        """
+        Sends a POST JSON request to containing this json_data to this client.
+        If sending of message fails and retry_delay > 0 then retry after retry_delay seconds
+
+        :param json_data: the json data to send
+        :param retry_delay: number of seconds to wait before retrying after failure
+        """
+
         with self.send_lock:
             data_size = cast(int, payload.JsonPayload(json_data, dumps=json.dumps).size)
             self.total_bytes_sent += data_size
@@ -122,11 +148,9 @@ class HTTPClient:
             )
             if retry_delay:
                 await asyncio.sleep(retry_delay)
-                await asyncio.create_task(self.send(message, msg_id, retry_delay))
+                await asyncio.create_task(self._send(json_data, retry_delay))
 
-    def recv(
-        self, msg_id: Optional[Union[str, int]] = None
-    ) -> "Future[Dict[str, Any]]":
+    def recv(self, msg_id: Optional[Union[str, int]] = None) -> Future[Dict[str, Any]]:
         """
         Request a message from this client
 
@@ -141,10 +165,22 @@ class HTTPClient:
 
         data = self.buffer.pop(msg_id, None)
         if data is None:
-            fut: "Future[Dict[str, Any]]"
+            fut: Future[Dict[str, Any]]
             fut = self.buffer[msg_id] = Future()
             return fut
         return data
+
+    async def _create_client_session(self, cookies: Dict[str, str]) -> None:
+        """
+        Create an aiohttp ClientSession for use with this HTTPClient. This method should only be
+        called once during construction.
+
+        :param cookies: Cookies for this ClientSession
+        """
+        self.session = aiohttp.ClientSession(
+            cookies=cookies,
+            json_serialize=MultiDimensionalArrayEncoder().encode,
+        )
 
 
 class HTTPServer:
@@ -154,7 +190,7 @@ class HTTPServer:
 
     def __init__(
         self,
-        pool: "tno.mpc.communication.Pool",
+        pool: tno.mpc.communication.Pool,
         port: int,
         addr: str = "0.0.0.0",
         ssl_ctx: Optional[ssl.SSLContext] = None,
@@ -217,7 +253,6 @@ class HTTPServer:
                 raise exception
             logger.info(f"Received JSON message from {request.remote}")
             logger.debug(f"JSON contains {trim_string(str(json_response))}")
-            msg_id, message = Communication.unpack(json_response)
 
             server_port = request.cookies.get("server_port", None)
             if server_port is None:
@@ -231,6 +266,7 @@ class HTTPServer:
                 logger.error(f"Handler not found for {request.remote}:{server_port}")
                 raise web.HTTPUnauthorized()
 
+            msg_id, message = Serialization.unpack(json_response, origin=handler)
             if msg_id in handler.buffer:
                 try:
                     handler.buffer.pop(msg_id).set_result(message)

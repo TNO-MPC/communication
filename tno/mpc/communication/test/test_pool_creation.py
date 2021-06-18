@@ -3,7 +3,10 @@ This module tests the creation of communication pools.
 """
 
 import asyncio
+from random import randint
 from typing import Any
+
+import pytest
 
 from tno.mpc.communication import Pool
 
@@ -40,3 +43,31 @@ def test_sync_pool_creation() -> None:
     loop = asyncio.get_event_loop()
     assert loop.run_until_complete(send_recv(pool, pool_2)) == 42
     assert loop.run_until_complete(send_recv(pool_2, pool)) == 42
+
+
+@pytest.mark.parametrize(
+    "http_addr, http_port",
+    [
+        (
+            f"{randint(0, 255)}.{randint(0, 255)}.{randint(0, 255)}.{randint(0, 255)}",
+            randint(0, 255),
+        )
+        for _ in range(100)
+    ],
+)
+def test_http_client_equality(http_addr: str, http_port: int) -> None:
+    """
+    Tests whether equality works properly for http clients
+
+    :param http_addr: IP address of the HTTP client.
+    :param http_port: Port number of the HTTP client.
+    """
+
+    pool = Pool()
+    pool.add_http_server(port=4000)
+    pool.add_http_client("test_client", addr=http_addr, port=http_port)
+
+    pool_2 = Pool()
+    pool_2.add_http_server(port=5000)
+    pool_2.add_http_client("test_client", addr=http_addr, port=http_port)
+    assert pool.pool_handlers["test_client"] == pool_2.pool_handlers["test_client"]

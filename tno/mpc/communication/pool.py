@@ -2,13 +2,15 @@
 This module contains the Pool class used to communicate between parties
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import socket
 import ssl
 import threading
 from asyncio import Future
-from typing import cast, Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from .functions import init
 from .httphandlers import HTTPClient, HTTPServer
@@ -147,7 +149,7 @@ class Pool:
         """
         await self._get_handler(handler_name).send(message, msg_id)
 
-    def arecv(self, handler_name: str, msg_id: Optional[str] = None) -> "Future[Any]":
+    def arecv(self, handler_name: str, msg_id: Optional[str] = None) -> Future[Any]:
         """
         Receive a message synchronously from a peer.
 
@@ -169,7 +171,7 @@ class Pool:
         if asyncio.isfuture(result):
             await result
             return result.result()
-        return cast(Dict[str, Any], result)
+        return result
 
     async def shutdown(self) -> None:
         """
