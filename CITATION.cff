@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+license: Apache-2.0
+message: If you use this software, please cite it using these metadata.
+authors:
+      - name: TNO MPC Lab
+        city: The Hague
+        country: NL
+        email: mpclab@tno.nl
+        website: https://mpc.tno.nl
+type: software
+url: https://mpc.tno.nl
+contact:
+      - name: TNO MPC Lab
+        city: The Hague
+        country: NL
+        email: mpclab@tno.nl
+        website: https://mpc.tno.nl
+repository-code: https://github.com/TNO-MPC/communication
+repository-artifact: https://pypi.org/project/tno.mpc.communication
+title: TNO MPC Lab - Communication
+version: v2.0.2
+date-released: 2021-06-28
+
