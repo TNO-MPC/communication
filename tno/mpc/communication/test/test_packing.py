@@ -141,7 +141,7 @@ def test_empty_dict() -> None:
     """
     Tests packing and unpacking of empty dictionary
     """
-    dict_: Dict[Any, Any] = dict()
+    dict_: Dict[Any, Any] = {}
     pack_unpack_test(dict_)
 
 

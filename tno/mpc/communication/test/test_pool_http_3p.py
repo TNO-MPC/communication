@@ -8,8 +8,8 @@ import pytest
 
 from tno.mpc.communication import Pool
 from tno.mpc.communication.test import (  # pylint: disable=unused-import
+    event_loop,
     fixture_pool_http_3p,
-    fixture_pool_https_3p,
 )
 
 
@@ -88,21 +88,6 @@ async def test_http_3p_server(pool_http_3p: Tuple[Pool, Pool, Pool]) -> None:
     await assert_send_message(pool_http_3p, 1, 2, "Hello4!")
     await assert_send_message(pool_http_3p, 2, 0, "Hello5!")
     await assert_send_message(pool_http_3p, 2, 1, "Hello6!")
-
-
-@pytest.mark.asyncio
-async def test_https_3p_server(pool_https_3p: Tuple[Pool, Pool, Pool]) -> None:
-    """
-    Tests sending and receiving of multiple messages between three communication pools using SSL/TLS
-
-    :param pool_http_3p: collection of three communication pools
-    """
-    await assert_send_message(pool_https_3p, 0, 1, "Hello1!")
-    await assert_send_message(pool_https_3p, 0, 2, "Hello2!")
-    await assert_send_message(pool_https_3p, 1, 0, "Hello3!")
-    await assert_send_message(pool_https_3p, 1, 2, "Hello4!")
-    await assert_send_message(pool_https_3p, 2, 0, "Hello5!")
-    await assert_send_message(pool_https_3p, 2, 1, "Hello6!")
 
 
 @pytest.mark.asyncio

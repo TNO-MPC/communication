@@ -278,11 +278,11 @@ class Serialization:
             )
         if check_annotations:
             ser_signature = inspect.signature(serialization_func)
-            if not (
-                ser_signature.return_annotation == dict
-                or ser_signature.return_annotation == "dict"
-                or ser_signature.return_annotation == Dict[str, Any]
-                or ser_signature.return_annotation == "Dict[str, Any]"
+            if ser_signature.return_annotation not in (
+                dict,
+                "dict",
+                Dict[str, Any],
+                "Dict[str, Any]",
             ):
                 raise AnnotationError(
                     "The provided class has a serialization function, but it does not return "
@@ -302,10 +302,7 @@ class Serialization:
                     "call."
                 )
             deser_signature = inspect.signature(deserialization_func)
-            if not (
-                deser_signature.return_annotation == obj_class.__name__
-                or deser_signature.return_annotation == obj_class
-            ):
+            if deser_signature.return_annotation not in (obj_class.__name__, obj_class):
                 raise AnnotationError(
                     f"The provided class has a deserialization function, but it does not return "
                     f"an object of type {obj_class_name}. Make sure the function has type "

@@ -9,6 +9,7 @@ import pytest
 
 from tno.mpc.communication import Pool, Serialization, init_pool
 from tno.mpc.communication.test import (  # pylint: disable=unused-import
+    event_loop,
     fixture_pool_http_2p,
 )
 from tno.mpc.communication.test.test_packing import (
