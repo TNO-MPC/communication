@@ -13,7 +13,7 @@ from tno.mpc.communication.serialization import (
     SupportsSerialization as SupportsSerialization,
 )
 
-__version__ = "2.1.2"
+__version__ = "3.1.0"
 
 
 def init_pool() -> Pool:

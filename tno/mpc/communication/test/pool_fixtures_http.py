@@ -43,12 +43,12 @@ async def finish(generator: AsyncGenerator[Any, None]) -> None:
 async def pool_http_local_base(
     id_: int, lport: int, *args: Tuple[str, int], ssl: bool = False
 ) -> AsyncGenerator[Pool, None]:
-    """
+    r"""
     Generates an async generator which yields a test pool
 
     :param id_: the identifier of the listening client
     :param lport: the port to listen on (http server)
-    :param args: (multiple) pair(s) specifying the clients in the form (name, client port)
+    :param \*args: (multiple) pair(s) specifying the clients in the form (name, client port)
     :param ssl: specify whether to use ssl certificates
     :return: a communication pool
     """

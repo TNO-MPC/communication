@@ -3,7 +3,7 @@ This module tests the communication between two communication pools.
 """
 
 import asyncio
-from typing import Dict, Tuple, cast
+from typing import Tuple
 
 import pytest
 
@@ -226,72 +226,6 @@ async def test_http_server_custom_kwargs2(pool_http_2p: Tuple[Pool, Pool]) -> No
     assert res.values == obj2.values
     assert res.other.name == obj2.other.name
     assert res.other.values == obj2.other.values
-    assert ClassCorrectKwargs.destination[0] == pool_http_2p[0].pool_handlers["local1"]
-    assert ClassCorrectKwargs.origin[0] == pool_http_2p[1].pool_handlers["local0"]
-    ClassCorrectKwargs.origin = []
-    ClassCorrectKwargs.destination = []
-
-
-@pytest.mark.asyncio
-async def test_http_server_monstrous_collection(
-    pool_http_2p: Tuple[Pool, Pool]
-) -> None:
-    """
-    Tests asynchronous sending and receiving of a complex collection between two communication pools
-
-    :param pool_http_2p: collection of two communication pools
-    """
-    collection = [
-        [[1, 2], [3, 4], "5", 6],
-        "7",
-        "z",
-        {"8": 9, 10: "11", 12.1: 13.2},
-        {"14": 15, 16: "17", 18.1: 19.2},
-        [[[20], "21", 22.1], "13"],
-        ([1, 2], "3", 3.0, {"4": 5.0}, (6, 7)),
-    ]
-    pool_http_2p[0].asend("local1", collection)
-    res = await pool_http_2p[1].recv("local0")
-    assert isinstance(collection, type(res))
-    assert res == collection
-
-
-@pytest.mark.asyncio
-async def test_http_server_monstrous_collection_with_custom_kwargs(
-    pool_http_2p: Tuple[Pool, Pool],
-) -> None:
-    """
-    Tests asynchronous sending and receiving of a complex collection containing an object with
-    custom serialization logic with required optional keyword arguments between two
-    communication pools
-
-    :param pool_http_2p: collection of two communication pools
-    """
-    ClassCorrectKwargs.origin = []
-    ClassCorrectKwargs.destination = []
-    Serialization.clear_new_serialization_logic()
-    Serialization.set_serialization_logic(ClassCorrectKwargs)
-    obj = ClassCorrectKwargs([1, 2, 3, 4], "test")
-    collection = [
-        {"x": obj},
-        [[1, 2], [3, 4], "5", 6],
-        "7",
-        "z",
-        {"8": 9, 10: "11", 12.1: 13.2},
-        {"14": 15, 16: "17", 18.1: 19.2},
-        [[[20], "21", 22.1], "13"],
-        ([1, 2], "3", 3.0, {"4": 5.0}, (6, 7)),
-    ]
-    pool_http_2p[0].asend("local1", collection)
-    res = await pool_http_2p[1].recv("local0")
-    res_obj = res.pop(0)["x"]
-    collection_obj = cast(Dict[str, ClassCorrectKwargs], collection.pop(0))["x"]
-    assert isinstance(collection, type(res))
-    assert res == collection
-
-    assert isinstance(collection_obj, type(res_obj))
-    assert res_obj.name == collection_obj.name
-    assert res_obj.values == collection_obj.values
     assert ClassCorrectKwargs.destination[0] == pool_http_2p[0].pool_handlers["local1"]
     assert ClassCorrectKwargs.origin[0] == pool_http_2p[1].pool_handlers["local0"]
     ClassCorrectKwargs.origin = []

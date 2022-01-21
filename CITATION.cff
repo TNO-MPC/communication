@@ -18,6 +18,6 @@ contact:
 repository-code: https://github.com/TNO-MPC/communication
 repository-artifact: https://pypi.org/project/tno.mpc.communication
 title: TNO MPC Lab - Communication
-version: v2.1.2
-date-released: 2021-11-30
+version: v3.1.0
+date-released: 2022-01-24
 

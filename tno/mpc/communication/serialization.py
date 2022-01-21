@@ -4,15 +4,54 @@ This module contains the serialization logic used in sending and receiving arbit
 
 from __future__ import annotations
 
-import base64
 import inspect
-import json
 import pickle
-from typing import Any, Callable, ClassVar, Dict, List, Tuple, Type, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
+import numpy.typing as npt
+import ormsgpack
 from mypy_extensions import Arg, KwArg
 from typing_extensions import Protocol
+
+from tno.mpc.communication.functions import init
+
+logger = init(__name__)
+try:
+    import gmpy2
+
+    from tno.mpc.encryption_schemes.utils import USE_GMPY2
+
+except ImportError:
+    USE_GMPY2 = False
+
+try:
+    import bitarray
+    import bitarray.util
+
+    USE_BITARRAY = True
+
+except ImportError:
+    USE_BITARRAY = False
+
+if TYPE_CHECKING:
+    from typeguard import typeguard_ignore as typeguard_ignore
+else:
+    from typing import no_type_check as typeguard_ignore
+
+GmpyTypes = Union["gmpy2.xmpz", "gmpy2.mpz", "gmpy2.mpfr", "gmpy2.mpq", "gmpy2.mpc"]
 
 
 class SupportsSerialization(Protocol):
@@ -20,21 +59,21 @@ class SupportsSerialization(Protocol):
     Type placeholder for classes supporting custom serialization.
     """
 
-    def serialize(self, **kwargs: Any) -> Dict[str, Any]:
-        """
-        Serialize this object into a JSON dict.
+    def serialize(self, **kwargs: Any) -> Any:
+        r"""
+        Serialize this object into bytes.
 
-        :param kwargs: Optional extra keyword arguments.
-        :return: Serialization of this instance as a JSON dict.
+        :param \**kwargs: Optional extra keyword arguments.
+        :return: Serialization of this instance to Dict with bytes.
         """
 
     @staticmethod
-    def deserialize(json_obj: Dict[str, Any], **kwargs: Any) -> SupportsSerialization:
-        """
-        Deserialize the given JSON dict into an object of this class.
+    def deserialize(obj: Any, **kwargs: Any) -> SupportsSerialization:
+        r"""
+        Deserialize the given object into an object of this class.
 
-        :param json_obj: JSON dict to be deserialized.
-        :param kwargs: Optional extra keyword arguments.
+        :param obj: object to be deserialized.
+        :param \**kwargs: Optional extra keyword arguments.
         :return: Deserialized object.
         """
 
@@ -53,71 +92,80 @@ class Serialization:
     - unpacking function that handles metadata and determines which deserialization needs to happen
     """
 
-    # variable that determines whether pickle is used when an unspecified class is serialized or
-    # an error is shown
-    default_use_pickle = True
-    # Variable that determines whether phe ciphertexts are checked for obfuscation before sending
-    # by default
-    default_verify_obfuscation = True
-
     # dictionary for serialization functions of classes that are not specified here
-    new_serialization_funcs: ClassVar[
+    custom_serialization_funcs: ClassVar[
         Dict[
             str,
-            Callable[[Arg(SupportsSerialization, "self"), KwArg(Any)], Dict[str, Any]],
+            Callable[[Arg(SupportsSerialization, "self"), KwArg(Any)], Any],
         ]
     ] = {}
     # dictionary for deserialization functions of classes that are not specified here
-    new_deserialization_funcs: ClassVar[
+    custom_deserialization_funcs: ClassVar[
         Dict[
             str,
-            Callable[
-                [Arg(Dict[str, Any], "json_obj"), KwArg(Any)], SupportsSerialization
-            ],
+            Callable[[Arg(Any, "obj"), KwArg(Any)], SupportsSerialization],
         ]
     ] = {}
 
     # region serialization functions
-
     @staticmethod
-    def standard_serialize(obj: StandardT, **_kwargs: Any) -> Dict[str, StandardT]:
-        """
-        Function for the most basic way of serialization that works for basic data types, such as
-        int, float, string
+    def numpy_serialize(obj: npt.NDArray[Any], **_kwargs: Any) -> Dict[str, List[Any]]:
+        r"""
+        Function for serializing numpy object arrays
 
-        :param obj: object to serialize
-        :param _kwargs: optional extra keyword arguments
+        :param obj: numpy object to serialize
+        :param \**_kwargs: optional extra keyword arguments
         :return: serialized object
         """
-        return {"value": obj}
+        return {"values": obj.tolist(), "shape": obj.shape}
 
     @staticmethod
-    def bytes_serialize(obj: bytes, **_kwargs: Any) -> Dict[str, str]:
-        """
-        Function for serializing bytes
+    def tuple_serialize(obj: Tuple[Any, ...], **_kwargs: Any) -> List[Any]:
+        r"""
+        Function for serializing tuples
 
-        :param obj: bytes object to serialize
-        :param _kwargs: optional extra keyword arguments
+        :param obj: tuple object to serialize
+        :param \**_kwargs: optional extra keyword arguments
         :return: serialized object
         """
-        return {"value": str(base64.b64encode(obj), "utf-8")}
+        return list(obj)
 
     @staticmethod
-    def default_serialize(
-        obj: Any, use_pickle: bool = default_use_pickle, **kwargs: Any
-    ) -> Dict[str, Dict[str, str]]:
+    def int_serialize(obj: int, **_kwargs: Any) -> bytes:
+        r"""
+        Function for serializing Python ints
+
+        :param obj: int object to serialize
+        :param \**_kwargs: optional extra keyword arguments
+        :return: serialized object
         """
+        return obj.to_bytes((obj.bit_length() + 8) // 8, "little", signed=True)
+
+    @staticmethod
+    def bitarray_serialize(obj: bitarray.bitarray, **_kwargs: Any) -> bytes:
+        r"""
+        Function for serializing bitarray
+
+        :param obj: bitarray object to serialize
+        :param \**_kwargs: optional extra keyword arguments
+        :return: serialized object
+        """
+        return bitarray.util.serialize(obj)
+
+    @staticmethod
+    def default_serialize(obj: Any, use_pickle: bool, **_kwargs: Any) -> bytes:
+        r"""
         Fall-back function is case no specific serialization function is available.
         This function uses the pickle library
 
         :param obj: object to serialize
         :param use_pickle: set to true if one wishes to use pickle as a fallback serializer
-        :param kwargs: optional extra keyword arguments
+        :param \**_kwargs: optional extra keyword arguments
         :raise NotImplementedError: raised when no serialization function is defined for object
         :return: serialized object
         """
         if use_pickle:
-            return {"dump": Serialization.bytes_serialize(pickle.dumps(obj), **kwargs)}
+            return pickle.dumps(obj)
         # else
         raise NotImplementedError(
             f"There is no serialization function defined for "
@@ -125,124 +173,24 @@ class Serialization:
         )
 
     @staticmethod
-    def extract_keys(result: Dict[str, Any], serialized_element: Any) -> None:
+    @typeguard_ignore
+    def gmpy_serialize(obj: GmpyTypes, **_kwargs: Any) -> bytes:
+        r"""
+        Function for serializing gmpy objects
+
+        :param obj: gmpy object to serialize
+        :param \**_kwargs: optional extra keyword arguments
+        :return: serialized object
         """
-        function that unpacks low level results for collection serialization
-
-        :param result: dictionary to store the extracted results in
-        :param serialized_element: elements to extract
-        """
-        for key in serialized_element["keys"]:
-            if key in result["keys"]:
-                result["keys"][key].extend(serialized_element["keys"][key])
-            else:
-                result["keys"][key] = serialized_element["keys"][key]
-
-    @staticmethod
-    def collection_serialize(
-        collection: Union[Dict[Any, Any], List[Any]],
-        use_pickle: bool = default_use_pickle,
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
-        """
-        function to serialize lists and dictionaries
-
-        The structure of the collection is saved in a class tree, that has the same structure
-        as the original collection, but instead of values it contains the class types.
-        All 'leaf' values inside the collection are added to a one-dimensional
-        list for each key of the serialization of all the leaves
-
-        :param collection: collection to serialize
-        :param use_pickle: set to true if one wishes to use pickle as a fallback serializer
-        :param kwargs: optional extra keyword arguments
-        :return: serialized collection
-        """
-        result: Dict[str, Any] = {"class_tree": [], "keys": {}}
-
-        # if the collection is a dictionary, recursively serialize the keys as a list and
-        # the values as a list  and save them in a tuple marked with a 'dict' tag and
-        # extract the class trees
-        if isinstance(collection, dict):
-            # serialize the keys
-            serialized_keys = Serialization.collection_serialize(
-                list(collection.keys()), use_pickle, **kwargs
-            )
-            # serialize the values
-            serialized_values = Serialization.collection_serialize(
-                list(collection.values()), use_pickle, **kwargs
-            )
-            # extract the class trees and combine them into a tuple tagged with 'dict'
-            result["class_tree"] = (
-                "dict",
-                serialized_keys["class_tree"],
-                serialized_values["class_tree"],
-            )
-            # for each key in the serialized list, add the values to the appropriate list
-            Serialization.extract_keys(result, serialized_keys)
-            Serialization.extract_keys(result, serialized_values)
-
-        # if the collection is a list, we recursively serialize each element inside the list
-        # and extract the keys and values and the class tree
-        elif isinstance(collection, list):
-            for element in collection:
-                # serialize the element
-                serialized_element = Serialization.collection_serialize(
-                    element, use_pickle, **kwargs
-                )
-                # extract the class tree
-                element_class_tree = serialized_element["class_tree"]
-                # compress a class tree with repeated entries
-                if result["class_tree"]:
-                    # if the last element is a compressed list
-                    is_comp_list = (
-                        isinstance(result["class_tree"][-1], tuple)
-                        and len(result["class_tree"][-1]) == 2
-                    )
-                    if is_comp_list:
-                        # extract the type and counter
-                        tuple_type, count = result["class_tree"][-1]
-                        # check if we can add this type to the tuple or need to start a new entry
-                        if tuple_type == element_class_tree:
-                            result["class_tree"][-1] = (tuple_type, count + 1)
-                        else:
-                            result["class_tree"].append(element_class_tree)
-                    # check if the last element has the same type
-                    elif result["class_tree"][-1] == element_class_tree:
-                        # combine into a tuple
-                        result["class_tree"][-1] = (element_class_tree, 2)
-                    else:
-                        result["class_tree"].append(element_class_tree)
-                else:
-                    result["class_tree"].append(element_class_tree)
-                # for each key in the serialized list, add the values to the appropriate list
-                Serialization.extract_keys(result, serialized_element)
-
-        # if we encounter a 'leaf' inside the collection, apply regular serialization and
-        # rename the keys so that they can be found during deserialization and let its class tree
-        # be the class type
-        else:
-            # regular serialization of the element
-            serialized_element = Serialization.serialize(
-                collection, use_pickle, **kwargs
-            )
-            element_type = serialized_element["type"]
-            processed_data = {}
-            # rename the keys
-            for key in serialized_element["data"]:
-                processed_key = element_type + "_" + key
-                processed_data[processed_key] = [serialized_element["data"][key]]
-
-            result["class_tree"] = element_type
-            result["keys"] = processed_data
-        return result
+        return gmpy2.to_binary(obj)
 
     @staticmethod
     def clear_new_serialization_logic() -> None:
         """
         Clear all custom serialization (and deserialization) logic that was added to this class.
         """
-        Serialization.new_serialization_funcs = {}
-        Serialization.new_deserialization_funcs = {}
+        Serialization.custom_serialization_funcs = {}
+        Serialization.custom_deserialization_funcs = {}
 
     @staticmethod
     def set_serialization_logic(
@@ -260,8 +208,8 @@ class Serialization:
         """
         obj_class_name = obj_class.__name__
         if (
-            obj_class_name in Serialization.new_serialization_funcs
-            and obj_class_name in Serialization.new_deserialization_funcs
+            obj_class_name in Serialization.custom_serialization_funcs
+            and obj_class_name in Serialization.custom_deserialization_funcs
         ):
             raise RepetitionError(
                 "The serialization logic for this class has already been set"
@@ -278,17 +226,6 @@ class Serialization:
             )
         if check_annotations:
             ser_signature = inspect.signature(serialization_func)
-            if ser_signature.return_annotation not in (
-                dict,
-                "dict",
-                Dict[str, Any],
-                "Dict[str, Any]",
-            ):
-                raise AnnotationError(
-                    "The provided class has a serialization function, but it does not return "
-                    "a dictionary. Make sure the function has type annotation 'dict' or set"
-                    "check_annotations to False if this is intentional behaviour."
-                )
             if not any(
                 param
                 for param in ser_signature.parameters.values()
@@ -321,67 +258,65 @@ class Serialization:
                     "These keyword arguments should also be forwarded to the next deserialization "
                     "call."
                 )
+            try:
+                deser_signature.parameters["obj"]
+            except KeyError as exception:
+                raise TypeError(
+                    "'obj' parameter missing in deserialization function."
+                ) from exception
+            if (
+                ser_signature.return_annotation
+                != deser_signature.parameters["obj"].annotation
+            ):
+                raise AnnotationError(
+                    f"Return type of serialization function ({ser_signature.return_annotation}) "
+                    f"does not match type of 'obj' parameter in deserialization function "
+                    f"({deser_signature.parameters['obj'].annotation})."
+                )
 
         # The object contains valid serialization logic, so we save it for later
-        Serialization.new_serialization_funcs[obj_class_name] = serialization_func
-        Serialization.new_deserialization_funcs[obj_class_name] = deserialization_func
+        Serialization.custom_serialization_funcs[obj_class_name] = serialization_func
+        Serialization.custom_deserialization_funcs[
+            obj_class_name
+        ] = deserialization_func
 
     @staticmethod
     def serialize(
         obj: Any,
-        use_pickle: bool = default_use_pickle,
+        use_pickle: bool,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
-        """
+    ) -> Union[bytes, Dict[str, bytes]]:
+        r"""
         Function that detects with serialization function should be used and applies it
 
         :param obj: object to serialize
         :param use_pickle: set to true if one wishes to use pickle as a fallback serializer
-        :param kwargs: optional extra keyword arguments
+        :param \**kwargs: optional extra keyword arguments
         :return: serialized object
         """
-        serialization_funcs: Dict[
-            str, Callable[[Arg(Any, "obj"), KwArg(Any)], Dict[str, Any]]
-        ] = {
-            "int": Serialization.standard_serialize,
-            "float": Serialization.standard_serialize,
-            "bytes": Serialization.bytes_serialize,
-            "str": Serialization.standard_serialize,
-            "list": lambda o, **l_kwargs: Serialization.collection_serialize(
-                o, use_pickle, **l_kwargs
-            ),
-            "tuple": lambda t, **l_kwargs: Serialization.collection_serialize(
-                list(t), use_pickle, **l_kwargs
-            ),
-            "ndarray": lambda a, **l_kwargs: Serialization.collection_serialize(
-                list(a), use_pickle, **l_kwargs
-            ),
-            "dict": lambda d, **l_kwargs: Serialization.collection_serialize(
-                d, use_pickle, **l_kwargs
-            ),
-        }
 
         obj_class = obj.__class__
         obj_class_name = obj_class.__name__
 
+        serialization_func: Callable[..., Any]
         # Take the default serialization function
-        serialization_func: Union[
-            Callable[[Arg(Any, "obj"), KwArg(Any)], Dict[str, Any]],
-            Callable[[Arg(SupportsSerialization, "self"), KwArg(Any)], Dict[str, Any]],
-            Callable[[Arg(Any, "o"), KwArg(Any)], Dict[str, Dict[str, str]]],
-        ] = lambda o, **l_kwargs: Serialization.default_serialize(
-            o, use_pickle, **l_kwargs
+        serialization_func = lambda _, **l_kwargs: Serialization.default_serialize(
+            _, use_pickle, **kwargs
         )
 
         # check if the serialization logic for the object has been added in an earlier stage
-        serialization_func = Serialization.new_serialization_funcs.get(
+        serialization_func = Serialization.custom_serialization_funcs.get(
             obj_class_name, serialization_func
         )
 
         # Check if there is a specified serialization function in this class
-        serialization_func = serialization_funcs.get(obj_class_name, serialization_func)
-
-        ser_obj = {"type": obj_class_name, "data": serialization_func(obj, **kwargs)}
+        serialization_func = SERIALIZATION_FUNCS.get(obj_class_name, serialization_func)
+        try:
+            data = serialization_func(obj, **kwargs)
+        except Exception:
+            logger.exception("Serialization failed!")
+            raise
+        ser_obj = {"type": obj_class_name, "data": data}
         return ser_obj
 
     # endregion
@@ -390,348 +325,272 @@ class Serialization:
     def pack(
         obj: Any,
         msg_id: Union[str, int],
-        use_pickle: bool = default_use_pickle,
+        use_pickle: bool,
+        option: Optional[int] = ormsgpack.OPT_SERIALIZE_NUMPY
+        | ormsgpack.OPT_PASSTHROUGH_BIG_INT
+        | ormsgpack.OPT_PASSTHROUGH_TUPLE,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
-        """
+    ) -> bytes:
+        r"""
         Function that adds metadata and serializes the object for transmission.
 
         :param obj: object to pack
         :param msg_id: message identifier associated to the message
         :param use_pickle: set to true if one wishes to use pickle as a fallback packer
-        :param kwargs: optional extra keyword arguments
+        :param option: ormsgpack options can be specified through this parameter
+        :param \**kwargs: optional extra keyword arguments
         :return: packed object (serialized and annotated)
         """
-        json_object = Serialization.serialize(obj, use_pickle, **kwargs)
-        json_object["id"] = msg_id
-        return json_object
+        dict_object = {"object": obj, "id": msg_id}
+        try:
+            packed_object = ormsgpack.packb(
+                dict_object,
+                default=lambda _: Serialization.serialize(_, use_pickle, **kwargs),
+                option=option,
+            )
+        except TypeError:
+            logger.exception(
+                "Packing failed, consider 1) enabling use_pickle for"
+                " inefficient/slow fallback to pickle, or 2) implement"
+                " a serialization method for this type/structure, or 3)"
+                " resolve the error by setting an option (if available)."
+            )
+            raise
+        return packed_object
 
-    # region deserialization functions
     @staticmethod
-    def standard_deserialize(
-        json_obj: Dict[str, StandardT], **_kwargs: Any
-    ) -> StandardT:
-        """
-        Function for the most basic way of deserialization that works for basic data types, such as
-        int, float, string
+    def numpy_deserialize(
+        obj: Dict[str, List[Any]], **kwargs: Any
+    ) -> npt.NDArray[np.object_]:
+        r"""
+        Function for serializing numpy object arrays
 
-        :param json_obj: object to deserialize
-        :param _kwargs: optional extra keyword arguments
+        :param obj: numpy object to serialize
+        :param \**kwargs: optional extra keyword arguments
         :return: deserialized object
         """
-        return json_obj["value"]
+        # ormsgpack can handle native numpy dtypes
+        result: npt.NDArray[np.object_] = np.empty(obj["shape"], dtype=object)
+        if obj["values"]:
+            result[:] = Serialization.collection_deserialize(obj["values"], **kwargs)
+        return result
 
     @staticmethod
-    def bytes_deserialize(json_obj: Dict[str, str], **_kwargs: Any) -> bytes:
-        """
-        Function for deserializing bytes
+    def tuple_deserialize(obj: List[Any], **kwargs: Any) -> Tuple[Any, ...]:
+        r"""
+        Function for deserializing tuples
 
-        :param json_obj: object to deserialize
-        :param _kwargs: optional extra keyword arguments
-        :return: deserialized bytes object
+        :param obj: object to deserialize
+        :param \**kwargs: optional extra keyword arguments
+        :return: deserialized tuple object
         """
-        return base64.b64decode(json_obj["value"])
+        return tuple(Serialization.collection_deserialize(obj, **kwargs))
 
     @staticmethod
-    def list_deserialize(json_obj: Dict[str, Any], **kwargs: Any) -> List[Any]:
-        """
-        Function for deserializing lists
+    def int_deserialize(obj: bytes, **_kwargs: Any) -> int:
+        r"""
+        Function for deserializing Python ints
 
-        :param json_obj: object to deserialize
-        :param kwargs: optional extra keyword arguments
-        :return: deserialized list object
+        :param obj: object to deserialize
+        :param \**_kwargs: optional extra keyword arguments
+        :return: deserialized int object
         """
-        if json_obj["same_type"]:
-            return Serialization.list_deserialize_same_type(json_obj, **kwargs)
-        # else
-        return Serialization.list_deserialize_dif_type(json_obj, **kwargs)
+        return int.from_bytes(obj, "little", signed=True)
 
     @staticmethod
-    def list_deserialize_same_type(
-        json_obj: Dict[str, Any], **kwargs: Any
-    ) -> List[Any]:
+    def bitarray_deserialize(obj: bytes, **_kwargs: Any) -> bitarray.bitarray:
+        r"""
+        Function for deserializing bitarrays
+
+        :param obj: object to deserialize
+        :param \**_kwargs: optional extra keyword arguments
+        :return: deserialized bitarray object
         """
-        Function for deserializing a list containing objects of only one type.
-
-        :param json_obj: object to deserialize
-        :param kwargs: optional extra keyword arguments
-        :return: deserialized list of which the contents have also been deserialized
-        """
-        element_type = json_obj["inner_type"]
-        length = json_obj["len"]
-        keys = json_obj["other_keys"].keys()
-        reconstructed_list = []
-        for i in range(length):
-            entry = {"type": element_type, "data": {}}
-            for key in keys:
-                entry["data"][key] = json_obj["other_keys"][key][i]
-            reconstructed_list.append(entry)
-
-        def deserialize(obj: Dict[str, Any]) -> Any:
-            """
-            Deserialize this object using the outer method's keyword arguments.
-
-            :param obj: Json description of object to be deserialized
-            :return: Deserialized object
-            """
-            return Serialization.deserialize(obj, **kwargs)
-
-        return list(map(deserialize, reconstructed_list))
+        return bitarray.util.deserialize(obj)
 
     @staticmethod
-    def list_deserialize_dif_type(json_obj: Dict[str, Any], **kwargs: Any) -> List[Any]:
+    @typeguard_ignore
+    def gmpy_deserialize(obj: bytes, **_kwargs: Any) -> GmpyTypes:
+        r"""
+        Function for deserializing gmpy objects
+
+        :param obj: object to deserialize
+        :param \**_kwargs: optional extra keyword arguments
+        :return: deserialized gmpy object
         """
-        Function for deserializing a list containing objects of more than one type.
-
-        :param json_obj: object to deserialize
-        :param kwargs: optional extra keyword arguments
-        :return: deserialized list of which the contents have also been deserialized
-        """
-
-        def deserialize(obj: Dict[str, Any]) -> Any:
-            """
-            Deserialize this object using the outer method's keyword arguments.
-
-            :param obj: Json description of object to be deserialized
-            :return: Deserialized object
-            """
-            return Serialization.deserialize(obj, **kwargs)
-
-        return list(map(deserialize, json_obj["serialized_elements"]))
+        return gmpy2.from_binary(obj)
 
     @staticmethod
-    def dict_deserialize(json_obj: Dict[str, Any], **kwargs: Any) -> Dict[Any, Any]:
-        """
-        Function for deserializing a dictionary.
-
-        :param json_obj: object to deserialize
-        :param kwargs: optional extra keyword arguments
-        :return: deserialized dictionary of which the contents have also been deserialized
-        """
-        return dict(
-            zip(
-                json_obj["keys"],
-                Serialization.deserialize(json_obj["values"], **kwargs),
-            )
-        )
-
-    @staticmethod
-    def default_deserialize(json_obj: Dict[str, Any], **kwargs: Any) -> Any:
-        """
+    def default_deserialize(
+        obj: bytes, use_pickle: bool = False, **_kwargs: Any
+    ) -> Any:
+        r"""
         Fall-back function is case no specific deserialization function is available.
         This function uses the pickle library
 
-        :param json_obj: object to deserialize
-        :param kwargs: optional extra keyword arguments
+        :param obj: object to deserialize
+        :param use_pickle: set to true if one wishes to use pickle as a fallback deserializer
+        :param \**_kwargs: optional extra keyword arguments
         :return: deserialized object
         """
-        return pickle.loads(Serialization.bytes_deserialize(json_obj["dump"], **kwargs))
+        if use_pickle:
+            return pickle.loads(obj)
+        # else
+        raise NotImplementedError(
+            f"There is no deserialization function defined for "
+            f"{obj.__class__.__name__} objects."
+        )
 
     @staticmethod
     def collection_deserialize(
-        json_obj: Dict[str, Any],
+        collection_obj: Union[List[Any], Dict[str, Any]],
         **kwargs: Any,
-    ) -> Union[Dict[Any, Any], List[Any], Any]:
-        """
+    ) -> Union[Dict[str, Any], List[Any]]:
+        r"""
         Function for deserializing collections
 
-        The class tree is recursed in the same order as the original collection was processed
-        during serialization. Every time a 'leaf' is encountered, the keys are identified for the
-        respective type and for each key, the first element of the list is extracted. These values
-        are then used to deserialize the type.
-
-        :param json_obj: object to deserialize
-        :param kwargs: optional extra keyword arguments
+        :param collection_obj: object to deserialize
+        :param \**kwargs: optional extra keyword arguments
         :raise ValueError: raised when (nested) value cannot be deserialized
         :return: deserialized collection
         """
-        class_tree = json_obj["class_tree"]
-        # If the class tree is a list, we need to recursively deserialize
-        if isinstance(class_tree, list):
+        if isinstance(collection_obj, list):
             result_list: List[Any] = []
-            for entry in class_tree:
-                sub_json = {"class_tree": entry, "keys": json_obj["keys"]}
-                deserialized_element = Serialization.collection_deserialize(
-                    sub_json, **kwargs
-                )
-                # if entry is a compressed list, we need to unpack the deserialized objects
-                # otherwise we can simply add them to the list containing the result
-                if isinstance(entry, tuple) and len(entry) == 2:
-                    result_list.extend(deserialized_element)
-                else:
-                    result_list.append(deserialized_element)
+            for sub_obj in collection_obj:
+                deserialized_element = Serialization.deserialize(sub_obj, **kwargs)
+                result_list.append(deserialized_element)
             return result_list
+        if (
+            isinstance(collection_obj, dict)
+            and "type" in collection_obj
+            and "data" in collection_obj
+        ):
+            result_dict = {"type": collection_obj["type"], "data": {}}
+            for key, value in collection_obj["data"].items():
+                result_dict["data"][key] = Serialization.deserialize(value, **kwargs)
+            return result_dict
+        if isinstance(collection_obj, dict):
+            result_dict = {}
+            for key, value in collection_obj.items():
+                result_dict[key] = Serialization.deserialize(value, **kwargs)
+            return result_dict
 
-        # If the element is a tuple, it can be either a compressed list or a dictionary
-        if isinstance(class_tree, tuple):
-            # If the element is a tuple with the 'dict' tag, recursively deserialize the lists
-            # for the keys and the values and combine them into a dictionary
-            if len(class_tree) == 3:
-                tag, keys, values = class_tree
-                assert tag == "dict"
-                json_keys = {"class_tree": keys, "keys": json_obj["keys"]}
-                deserialized_keys = Serialization.collection_deserialize(
-                    json_keys, **kwargs
-                )
-                json_values = {"class_tree": values, "keys": json_obj["keys"]}
-                deserialized_values = Serialization.collection_deserialize(
-                    json_values, **kwargs
-                )
-                return dict(zip(deserialized_keys, deserialized_values))
-
-            # If the element is a compressed list, recurse over the compressed list
-            if len(class_tree) == 2:
-                element_type, number = class_tree
-                result_list = []
-                for _ in range(number):
-                    json_element = {
-                        "class_tree": element_type,
-                        "keys": json_obj["keys"],
-                    }
-                    # deserialize the inner element
-                    deserialized_element = Serialization.collection_deserialize(
-                        json_element,
-                        **kwargs,
-                    )
-                    # add it to the result
-                    result_list.append(deserialized_element)
-                return result_list
-            # else
-            raise ValueError("This value cannot be deserialized")
-
-        # If the element is a single object, find the appropriate keys and apply regular
-        # deserialization
-        class_name = class_tree
-        data = {}
-        for key in json_obj["keys"]:
-            if key.startswith(class_name):
-                # the keys are always of the format [class name]_[key name]
-                # len(class_name) + 1 is the length of the string before
-                # the actual name of the key
-                clean_key = key[len(class_name) + 1 :]
-                # pop the first value and write it to the right key
-                data[clean_key] = json_obj["keys"][key][0]
-                json_obj["keys"][key] = json_obj["keys"][key][1:]
-        return Serialization.deserialize({"type": class_name, "data": data}, **kwargs)
+        raise ValueError("Cannot process collection")
 
     @staticmethod
-    def deserialize(json_obj: Dict[str, Any], **kwargs: Any) -> Any:
-        """
+    def deserialize(obj: Any, use_pickle: bool = False, **kwargs: Any) -> Any:
+        r"""
         Function that detects which deserialization function should be run and calls it
 
-        :param json_obj: object to deserialize
-        :param kwargs: optional extra keyword arguments
+        :param obj: object to deserialize
+        :param use_pickle: set to true if one wishes to use pickle as a fallback deserializer
+        :param \**kwargs: optional extra keyword arguments
         :return: deserialized object
         """
-        deserialization_funcs: Dict[
-            str, Callable[[Arg(Dict[str, Any], "json_obj"), KwArg(Any)], Any]
-        ] = {
-            "int": Serialization.standard_deserialize,
-            "float": Serialization.standard_deserialize,
-            "bytes": Serialization.bytes_deserialize,
-            "str": Serialization.standard_deserialize,
-            "list": Serialization.collection_deserialize,
-            "tuple": lambda j, **l_kwargs: tuple(
-                Serialization.collection_deserialize(j, **l_kwargs)
-            ),
-            "ndarray": lambda j, **l_kwargs: np.array(
-                Serialization.collection_deserialize(j, **l_kwargs)
-            ),
-            "dict": Serialization.collection_deserialize,
-        }
-
-        if json_obj["type"] in Serialization.new_deserialization_funcs:
-            deserialization_func = Serialization.new_deserialization_funcs[
-                json_obj["type"]
-            ]
-        elif json_obj["type"] in deserialization_funcs:
-            deserialization_func = deserialization_funcs[json_obj["type"]]
-        else:
-            deserialization_func = Serialization.default_deserialize
-
-        return deserialization_func(json_obj["data"], **kwargs)
+        if isinstance(obj, list):
+            return Serialization.collection_deserialize(
+                obj, use_pickle=use_pickle, **kwargs
+            )
+        if isinstance(obj, dict) and "type" in obj.keys() and "data" in obj.keys():
+            if isinstance(obj["data"], dict):
+                obj = Serialization.collection_deserialize(
+                    obj, use_pickle=use_pickle, **kwargs
+                )
+            if obj["type"] in Serialization.custom_deserialization_funcs:
+                deserialization_func = Serialization.custom_deserialization_funcs[
+                    obj["type"]
+                ]
+            elif obj["type"] in DESERIALIZATION_FUNCS:
+                deserialization_func = DESERIALIZATION_FUNCS[obj["type"]]
+            else:
+                deserialization_func = Serialization.default_deserialize
+            return deserialization_func(obj["data"], use_pickle=use_pickle, **kwargs)
+        if isinstance(obj, dict):
+            return Serialization.collection_deserialize(
+                obj, use_pickle=use_pickle, **kwargs
+            )
+        return obj
 
     # endregion
 
     @staticmethod
-    def unpack(json_obj: Dict[str, Any], **kwargs: Any) -> Tuple[str, Any]:
-        """
-        Function that handles metadata and turns the json object into a python object
+    def unpack(
+        obj: bytes,
+        use_pickle: bool = False,
+        option: Optional[int] = None,
+        **kwargs: Any,
+    ) -> Tuple[str, Any]:
+        r"""
+        Function that handles metadata and turns the bytes object into a python object
 
-        :param json_obj: json object to unpack
-        :param kwargs: optional extra keyword arguments
+        :param obj: bytes object to unpack
+        :param use_pickle: set to true if one wishes to use pickle as a fallback deserializer
+        :param option: ormsgpack options can be specified through this parameter
+        :param \**kwargs: optional extra keyword arguments
         :return: unpacked object
         """
-        msg_id = json_obj["id"]
-        del json_obj["id"]
-        obj = Serialization.deserialize(json_obj, **kwargs)
-        return msg_id, obj
+        try:
+            dict_obj = ormsgpack.unpackb(obj, option=option)
+        except TypeError:
+            logger.exception(
+                "Unpacking failed, consider 1) enabling use_pickle for"
+                " inefficient/slow fallback to pickle, or 2) implement"
+                " a serialization method for this type/structure, or 3)"
+                " resolve the error by setting an option (if available)."
+            )
+            raise
+        deserialized_object = Serialization.deserialize(
+            dict_obj["object"], use_pickle=use_pickle, **kwargs
+        )
+        return dict_obj["id"], deserialized_object
 
 
-class MultiDimensionalArrayEncoder(json.JSONEncoder):
-    """
-    Class that represents a JSON encoder that can additionally handle collections like tuples, lists
-    and dictionaries
-    """
+DESERIALIZATION_FUNCS: Dict[str, Callable[[Arg(Any, "obj"), KwArg(Any)], Any]] = {
+    "int": Serialization.int_deserialize,
+    "tuple": Serialization.tuple_deserialize,
+    "ndarray": Serialization.numpy_deserialize,
+}
 
-    def encode(self, o: Any) -> str:
-        """
-        Function that encodes a python object
+SERIALIZATION_FUNCS: Dict[str, Callable[[Arg(Any, "obj"), KwArg(Any)], Any]] = {
+    "int": Serialization.int_serialize,
+    "tuple": Serialization.tuple_serialize,
+    "ndarray": Serialization.numpy_serialize,
+}
 
-        :param o: python object
-        :return: the object encoded in a string
-        """
-
-        def preprocess(item: Any) -> Any:
-            """
-            Function that preprocesses the item to be encoded so that the general JSON encoder
-            can further process it
-
-            :param item: a collection (tuple, list or dictionary)
-            :return: dictionary or list
-            """
-            if isinstance(item, tuple):
-                if len(item) == 2:
-                    class_tree, count = item
-                    return {
-                        "__type__": "tuple",
-                        "count": count,
-                        "class_tree": preprocess(class_tree),
-                    }
-                # else
-                assert len(item) == 3
-                _, keys, values = item
-                return {
-                    "__type__": "dict",
-                    "keys": preprocess(keys),
-                    "values": preprocess(values),
-                }
-            if isinstance(item, list):
-                return [preprocess(e) for e in item]
-            if isinstance(item, dict):
-                return {key: preprocess(value) for key, value in item.items()}
-            # else
-            return item
-
-        # Apply the preprocessing step and then call the general encoder
-        return super().encode(preprocess(o))
-
-
-def hinted_tuple_hook(obj: Any) -> Any:
-    """
-    Object hook for tuples and dictionaries which is used in json.loads
-
-    :param obj: json object
-    :return: tuple containing elements to recreate a collection
-    """
-    if "__type__" in obj:
-        if obj["__type__"] == "tuple":
-            return obj["class_tree"], obj["count"]
-        # else
-        assert obj["__type__"] == "dict"
-        return "dict", obj["keys"], obj["values"]
-    # else
-    return obj
+if USE_BITARRAY:
+    DESERIALIZATION_FUNCS = {
+        **DESERIALIZATION_FUNCS,
+        **{
+            "bitarray": Serialization.bitarray_deserialize,
+        },
+    }
+    SERIALIZATION_FUNCS = {
+        **SERIALIZATION_FUNCS,
+        **{
+            "bitarray": Serialization.bitarray_serialize,
+        },
+    }
+if USE_GMPY2:
+    DESERIALIZATION_FUNCS = {
+        **DESERIALIZATION_FUNCS,
+        **{
+            "xmpz": Serialization.gmpy_deserialize,
+            "mpz": Serialization.gmpy_deserialize,
+            "mpfr": Serialization.gmpy_deserialize,
+            "mpq": Serialization.gmpy_deserialize,
+            "mpc": Serialization.gmpy_deserialize,
+        },
+    }
+    SERIALIZATION_FUNCS = {
+        **SERIALIZATION_FUNCS,
+        **{
+            "xmpz": Serialization.gmpy_serialize,
+            "mpz": Serialization.gmpy_serialize,
+            "mpfr": Serialization.gmpy_serialize,
+            "mpq": Serialization.gmpy_serialize,
+            "mpc": Serialization.gmpy_serialize,
+        },
+    }
 
 
 class AnnotationError(Exception):

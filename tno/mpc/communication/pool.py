@@ -8,9 +8,10 @@ import asyncio
 import logging
 import socket
 import ssl
-import threading
 from asyncio import Future
 from typing import Any, Dict, Optional, cast
+
+from aiohttp import ClientTimeout
 
 from .functions import init
 from .httphandlers import HTTPClient, HTTPServer
@@ -28,6 +29,8 @@ class Pool:
         key: Optional[str] = None,
         cert: Optional[str] = None,
         ca_cert: Optional[str] = None,
+        timeout: ClientTimeout = ClientTimeout(total=300),
+        max_retries: int = -1,
     ):
         """
         Initalises a pool
@@ -35,17 +38,19 @@ class Pool:
         :param key: path to the key to use in the ssl context
         :param cert: path to the certificate to use in the ssl context
         :param ca_cert: path to the certificate authority (CA) certificate to use in the ssl context
+        :param timeout: default timeout for client connections
+        :param max_retries: default maximum number of retries for sending a message (-1 for unbounded retries)
         """
         self.key = key
         self.cert = cert
         self.ca_cert = ca_cert
+        self.default_timeout = timeout
+        self.default_max_retries = max_retries
 
         self.loop = asyncio.get_event_loop()
         self.http_server: Optional[HTTPServer] = None
         self.pool_handlers: Dict[str, HTTPClient] = {}
         self.handlers_lookup: Dict[str, HTTPClient] = {}
-        self.msg_counter = 0
-        self.lock = threading.Lock()
 
     def add_http_server(
         self, port: Optional[int] = None, addr: str = "0.0.0.0"
@@ -124,7 +129,12 @@ class Pool:
         return 443
 
     def asend(
-        self, handler_name: str, message: Any, msg_id: Optional[str] = None
+        self,
+        handler_name: str,
+        message: Any,
+        msg_id: Optional[str] = None,
+        timeout: Optional[ClientTimeout] = None,
+        max_retries: Optional[int] = None,
     ) -> None:
         """
         Send a message to peer asynchronously.
@@ -134,11 +144,27 @@ class Pool:
         :param handler_name: the name of the pool handler to send a message to
         :param message: the message to send
         :param msg_id: an optional string identifying the message to send
+        :param timeout: timeout for the connection, if not set use default_timeout
+        :param max_retries: maximum number of retries for sending the message, if not set use default_max_retries
+            (-1 for unbounded retries)
         """
-        self.loop.create_task(self._get_handler(handler_name).send(message, msg_id))
+        if timeout is None:
+            timeout = self.default_timeout
+        if max_retries is None:
+            max_retries = self.default_max_retries
+        self.loop.create_task(
+            self._get_handler(handler_name).send(
+                message, msg_id, timeout=timeout, max_retries=max_retries
+            )
+        )
 
     async def send(
-        self, handler_name: str, message: Any, msg_id: Optional[str] = None
+        self,
+        handler_name: str,
+        message: Any,
+        msg_id: Optional[str] = None,
+        timeout: Optional[ClientTimeout] = None,
+        max_retries: Optional[int] = None,
     ) -> None:
         """
         Send a message to peer synchronously.
@@ -146,8 +172,17 @@ class Pool:
         :param handler_name: the name of the pool handler to send a message to
         :param message: the message to send
         :param msg_id: an optional string identifying the message to send
+        :param timeout: timeout for the connection, if not set use default_timeout
+        :param max_retries: maximum number of retries for sending the message, if not set use default_max_retries
+            (-1 for unbounded retries)
         """
-        await self._get_handler(handler_name).send(message, msg_id)
+        if timeout is None:
+            timeout = self.default_timeout
+        if max_retries is None:
+            max_retries = self.default_max_retries
+        await self._get_handler(handler_name).send(
+            message, msg_id, timeout=timeout, max_retries=max_retries
+        )
 
     def arecv(self, handler_name: str, msg_id: Optional[str] = None) -> Future[Any]:
         """
@@ -177,12 +212,23 @@ class Pool:
         """
         Gracefully shutdown all connections/listeners in the pool.
         """
-        if self.http_server:
+        total_bytes_sent = 0
+        msg_send_counter = 0
+        total_bytes_recv = 0
+        msg_recv_counter = 0
+        if self.http_server is not None:
             await self.http_server.shutdown()
+            msg_recv_counter = self.http_server.msg_recv_counter
+            total_bytes_recv = self.http_server.total_bytes_recv
         for handler in self.pool_handlers.values():
             await handler.shutdown()
+            total_bytes_sent += handler.total_bytes_sent
+            msg_send_counter += handler.msg_send_counter
         self.pool_handlers = {}
         self.handlers_lookup = {}
+        logger.info(
+            f"Pool shutdown.\nTotal bytes sent: {total_bytes_sent}\nTotal messages sent: {msg_send_counter}\nTotal bytes received: {total_bytes_recv}\nTotal messages received: {msg_recv_counter}"
+        )
 
     def _get_handler(self, handler_name: str) -> HTTPClient:
         """

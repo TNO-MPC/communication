@@ -9,7 +9,7 @@ The package tno.mpc.communication is part of the TNO Python Toolbox.
 
 ## Documentation
 
-Documentation of the tno.mpc.communication package can be found [here](https://docs.mpc.tno.nl/communication/2.1.2).
+Documentation of the tno.mpc.communication package can be found [here](https://docs.mpc.tno.nl/communication/3.1.0).
 
 ## Install
 
@@ -148,7 +148,9 @@ The library supports sending the following objects through the send and receive 
 - byte strings
 - integers
 - floats 
-- (nested) lists/dictionaries/numpy arrays containing any of the above. Combinations of these as well.
+- (nested) lists/tuples/dictionaries/numpy arrays containing any of the above. Combinations of these as well.
+
+Under the hood [`ormsgpack`](https://pypi.org/project/ormsgpack) is used, additional options can be activated using the `option` parameter (see, https://github.com/aviramha/ormsgpack#option).
 
 Messages can be sent both synchronously and asynchronously.
 If you do not know which one to use, use the synchronous methods with `await`.
@@ -182,18 +184,16 @@ class SomeClass:
         # serialization logic that returns a dictionary
 
     @staticmethod
-    def deserialize(json_obj: Dict[str, Any], **kwargs: Any) -> 'SomeClass':
+    def deserialize(obj: Dict[str, Any], **kwargs: Any) -> 'SomeClass':
         # deserialization logic that turns the dictionary produced
         # by serialize back into an object of type SomeClass
 ```
 
-The class needs to contain a `serialize` method and a `deserialize` method. The return type annotation is necessary for the 
-communication module to validate the serialization logic.
-Next to this, the `**kwargs` argument is also necessary to allow for (de)serialization that 
+The class needs to contain a `serialize` method and a `deserialize` method. The type annotation is necessary and validated by the 
+communication module.
+Next to this, the `**kwargs` argument is also necessary to allow for nested (de)serialization that 
 makes use of additional optional keyword arguments. It is not necessary to use any of these optional keyword 
-arguments, but they should be passed on to any subsequent `Serialization.serialize()` or 
-`Serialization.deserialize()` call that is made in the custom `serialize` and/or `deserialize` 
-methods. If one does not make use of the `**kwargs` and also does not make a call to a subsequent 
+arguments. If one does not make use of the `**kwargs` and also does not make a call to a subsequent 
 `Serialization.serialize()` or `Serialization.deserialize()`, it is advised to write 
 `**_kwargs: Any` instead of `**kwargs: Any`.
 
