@@ -20,8 +20,6 @@ from typing import (
     Union,
 )
 
-import numpy as np
-import numpy.typing as npt
 import ormsgpack
 from mypy_extensions import Arg, KwArg
 from typing_extensions import Protocol
@@ -33,7 +31,6 @@ try:
     import gmpy2
 
     from tno.mpc.encryption_schemes.utils import USE_GMPY2
-
 except ImportError:
     USE_GMPY2 = False
 
@@ -42,9 +39,16 @@ try:
     import bitarray.util
 
     USE_BITARRAY = True
-
 except ImportError:
     USE_BITARRAY = False
+
+try:
+    import numpy as np
+    import numpy.typing as npt
+
+    USE_NUMPY = True
+except ImportError:
+    USE_NUMPY = False
 
 if TYPE_CHECKING:
     from typeguard import typeguard_ignore as typeguard_ignore
@@ -52,6 +56,12 @@ else:
     from typing import no_type_check as typeguard_ignore
 
 GmpyTypes = Union["gmpy2.xmpz", "gmpy2.mpz", "gmpy2.mpfr", "gmpy2.mpq", "gmpy2.mpc"]
+
+DEFAULT_PACK_OPTION = (
+    ormsgpack.OPT_SERIALIZE_NUMPY
+    | ormsgpack.OPT_PASSTHROUGH_BIG_INT
+    | ormsgpack.OPT_PASSTHROUGH_TUPLE
+)
 
 
 class SupportsSerialization(Protocol):
@@ -109,7 +119,7 @@ class Serialization:
 
     # region serialization functions
     @staticmethod
-    def numpy_serialize(obj: npt.NDArray[Any], **_kwargs: Any) -> Dict[str, List[Any]]:
+    def numpy_serialize(obj: npt.NDArray[Any], **_kwargs: Any) -> Dict[str, Any]:
         r"""
         Function for serializing numpy object arrays
 
@@ -298,19 +308,20 @@ class Serialization:
         obj_class = obj.__class__
         obj_class_name = obj_class.__name__
 
-        serialization_func: Callable[..., Any]
         # Take the default serialization function
-        serialization_func = lambda _, **l_kwargs: Serialization.default_serialize(
+        serialization_func: Callable[
+            ..., Any
+        ] = lambda _, **l_kwargs: Serialization.default_serialize(
             _, use_pickle, **kwargs
         )
+
+        # Check if there is a specified serialization function in this class
+        serialization_func = SERIALIZATION_FUNCS.get(obj_class_name, serialization_func)
 
         # check if the serialization logic for the object has been added in an earlier stage
         serialization_func = Serialization.custom_serialization_funcs.get(
             obj_class_name, serialization_func
         )
-
-        # Check if there is a specified serialization function in this class
-        serialization_func = SERIALIZATION_FUNCS.get(obj_class_name, serialization_func)
         try:
             data = serialization_func(obj, **kwargs)
         except Exception:
@@ -326,9 +337,7 @@ class Serialization:
         obj: Any,
         msg_id: Union[str, int],
         use_pickle: bool,
-        option: Optional[int] = ormsgpack.OPT_SERIALIZE_NUMPY
-        | ormsgpack.OPT_PASSTHROUGH_BIG_INT
-        | ormsgpack.OPT_PASSTHROUGH_TUPLE,
+        option: Optional[int] = DEFAULT_PACK_OPTION,
         **kwargs: Any,
     ) -> bytes:
         r"""
@@ -548,15 +557,26 @@ class Serialization:
 DESERIALIZATION_FUNCS: Dict[str, Callable[[Arg(Any, "obj"), KwArg(Any)], Any]] = {
     "int": Serialization.int_deserialize,
     "tuple": Serialization.tuple_deserialize,
-    "ndarray": Serialization.numpy_deserialize,
 }
 
 SERIALIZATION_FUNCS: Dict[str, Callable[[Arg(Any, "obj"), KwArg(Any)], Any]] = {
     "int": Serialization.int_serialize,
     "tuple": Serialization.tuple_serialize,
-    "ndarray": Serialization.numpy_serialize,
 }
 
+if USE_NUMPY:
+    DESERIALIZATION_FUNCS = {
+        **DESERIALIZATION_FUNCS,
+        **{
+            "ndarray": Serialization.numpy_deserialize,
+        },
+    }
+    SERIALIZATION_FUNCS = {
+        **SERIALIZATION_FUNCS,
+        **{
+            "ndarray": Serialization.numpy_serialize,
+        },
+    }
 if USE_BITARRAY:
     DESERIALIZATION_FUNCS = {
         **DESERIALIZATION_FUNCS,

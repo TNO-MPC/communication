@@ -17,7 +17,7 @@ from aiohttp import ClientSession, ClientTimeout, web
 import tno.mpc.communication  # to make sphinx find Pool correctly  # pylint: disable=unused-import
 from tno.mpc.communication.functions import init
 
-from .serialization import Serialization
+from .serialization import DEFAULT_PACK_OPTION, Serialization
 
 # to make mypy recognize pool (while not breaking sphinx or causing circular imports)
 if TYPE_CHECKING:
@@ -38,9 +38,7 @@ class HTTPClient:
         addr: str,
         port: int,
         ssl_ctx: Optional[ssl.SSLContext],
-        option: Optional[int] = ormsgpack.OPT_SERIALIZE_NUMPY
-        | ormsgpack.OPT_PASSTHROUGH_BIG_INT
-        | ormsgpack.OPT_PASSTHROUGH_TUPLE,
+        option: Optional[int] = DEFAULT_PACK_OPTION,
         use_pickle: bool = False,
     ):
         """
@@ -298,10 +296,12 @@ class HTTPServer:
         except Exception as exception:
             logger.exception("Something went wrong in loading received response.")
             raise exception
-        logger.info(f"Received message from {request.remote}")
-        logger.debug(f"Message contains {response[0:min(100,len(response))]!r}...")
 
         server_port = request.cookies.get("server_port", None)
+
+        logger.info(f"Received message from {request.remote}:{server_port}")
+        logger.debug(f"Message contains {response[0:min(100,len(response))]!r}...")
+
         if server_port is None:
             logger.error("HTTP POST does not contain the server_port cookie.")
             raise web.HTTPBadRequest()

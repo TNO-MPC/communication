@@ -98,14 +98,14 @@ def test_int_serialization() -> None:
     """
     Tests packing and unpacking of Python ints
     """
-    pack_unpack_test(2 ** 2048 - 1, serial_option=ormsgpack.OPT_PASSTHROUGH_BIG_INT)
+    pack_unpack_test(2**2048 - 1, serial_option=ormsgpack.OPT_PASSTHROUGH_BIG_INT)
 
 
 def test_neg_int_serialization() -> None:
     """
     Tests packing and unpacking of Python ints
     """
-    pack_unpack_test(-(2 ** 2048 - 1), serial_option=ormsgpack.OPT_PASSTHROUGH_BIG_INT)
+    pack_unpack_test(-(2**2048 - 1), serial_option=ormsgpack.OPT_PASSTHROUGH_BIG_INT)
 
 
 def test_int_serialization_fail() -> None:
@@ -113,7 +113,7 @@ def test_int_serialization_fail() -> None:
     Tests packing and unpacking of Python ints
     """
     with pytest.raises(TypeError):
-        pack_unpack_test(2 ** 2048, serial_options=None)
+        pack_unpack_test(2**2048, serial_options=None)
 
 
 def test_float_serialization() -> None:

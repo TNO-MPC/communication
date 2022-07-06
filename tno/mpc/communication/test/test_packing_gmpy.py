@@ -38,14 +38,14 @@ def test_gmpy_serialization_list() -> None:
     """
     Tests packing and unpacking of gmpy list object
     """
-    pack_unpack_test([gmpy2.mpz(2 ** 2048)] * 42)
+    pack_unpack_test([gmpy2.mpz(2**2048)] * 42)
 
 
 def test_gmpy_serialization_dict() -> None:
     """
     Tests packing and unpacking of gmpy list object
     """
-    pack_unpack_test({"a": gmpy2.mpz(2 ** 2048), "b": gmpy2.mpfr(42.1231)})
+    pack_unpack_test({"a": gmpy2.mpz(2**2048), "b": gmpy2.mpfr(42.1231)})
 
 
 def test_gmpy_serialization_numpy() -> None:
@@ -53,7 +53,7 @@ def test_gmpy_serialization_numpy() -> None:
     Tests packing and unpacking of gmpy list object
     """
     pack_unpack_test(
-        np.array([gmpy2.mpz(2 ** 2048)] * 42),
+        np.array([gmpy2.mpz(2**2048)] * 42),
         np.array_equal,
         serial_option=ormsgpack.OPT_SERIALIZE_NUMPY,
     )
@@ -64,7 +64,7 @@ def test_gmpy_serialization_numpy_ndarray() -> None:
     Tests packing and unpacking of gmpy list object
     """
     pack_unpack_test(
-        np.array([[gmpy2.mpz(2 ** 2048)] * 42] * 3),
+        np.array([[gmpy2.mpz(2**2048)] * 42] * 3),
         np.array_equal,
         serial_option=ormsgpack.OPT_SERIALIZE_NUMPY,
     )

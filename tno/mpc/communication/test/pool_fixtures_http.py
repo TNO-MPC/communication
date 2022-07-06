@@ -8,12 +8,13 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Generator, Tuple
 
 import pytest
+import pytest_asyncio
 from _pytest.fixtures import FixtureRequest
 
 from tno.mpc.communication import Pool
 
 
-@pytest.fixture(scope="module")
+@pytest_asyncio.fixture(scope="module")
 def event_loop(  # pylint: disable=unused-argument
     request: FixtureRequest,
 ) -> Generator[AbstractEventLoop, None, None]:
@@ -61,7 +62,7 @@ async def pool_http_local_base(
         )
     else:
         pool = Pool()
-    pool.add_http_server(lport)
+    pool.add_http_server(port=lport)
     for client_name, client_port in args:
         pool.add_http_client(client_name, "127.0.0.1", client_port)
     yield pool
@@ -107,8 +108,7 @@ async def generate_http_test_pools(
 
 
 # HTTP
-@pytest.fixture(name="pool_http_2p", scope="module")
-@pytest.mark.asyncio
+@pytest_asyncio.fixture(name="pool_http_2p", scope="module")
 async def fixture_pool_http_2p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     """
     Creates a collection of 2 communication pools
@@ -120,8 +120,7 @@ async def fixture_pool_http_2p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     await finish(pools)
 
 
-@pytest.fixture(name="pool_http_3p", scope="module")
-@pytest.mark.asyncio
+@pytest_asyncio.fixture(name="pool_http_3p", scope="module")
 async def fixture_pool_http_3p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     """
     Creates a collection of 3 communication pools
@@ -133,8 +132,7 @@ async def fixture_pool_http_3p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     await finish(pools)
 
 
-@pytest.fixture(name="pool_http_4p", scope="module")
-@pytest.mark.asyncio
+@pytest_asyncio.fixture(name="pool_http_4p", scope="module")
 async def fixture_pool_http_4p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     """
     Creates a collection of 4 communication pools
@@ -146,8 +144,7 @@ async def fixture_pool_http_4p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     await finish(pools)
 
 
-@pytest.fixture(name="pool_http_5p", scope="module")
-@pytest.mark.asyncio
+@pytest_asyncio.fixture(name="pool_http_5p", scope="module")
 async def fixture_pool_http_5p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     """
     Creates a collection of 5 communication pools
@@ -160,8 +157,7 @@ async def fixture_pool_http_5p() -> AsyncGenerator[Tuple[Pool, ...], None]:
 
 
 # HTTPS
-@pytest.fixture(name="pool_https_2p", scope="function")
-@pytest.mark.asyncio
+@pytest_asyncio.fixture(name="pool_https_2p", scope="function")
 async def fixture_pool_https_2p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     """
     Creates a collection of 2 communication pools using SSL/TLS
@@ -173,8 +169,7 @@ async def fixture_pool_https_2p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     await finish(pools)
 
 
-@pytest.fixture(name="pool_https_3p", scope="function")
-@pytest.mark.asyncio
+@pytest_asyncio.fixture(name="pool_https_3p", scope="function")
 async def fixture_pool_https_3p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     """
     Creates a collection of 3 communication pools using SSL/TLS
@@ -186,8 +181,7 @@ async def fixture_pool_https_3p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     await finish(pools)
 
 
-@pytest.fixture(name="pool_https_4p", scope="function")
-@pytest.mark.asyncio
+@pytest_asyncio.fixture(name="pool_https_4p", scope="function")
 async def fixture_pool_https_4p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     """
     Creates a collection of 4 communication pools using SSL/TLS
@@ -199,8 +193,7 @@ async def fixture_pool_https_4p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     await finish(pools)
 
 
-@pytest.fixture(name="pool_https_5p", scope="function")
-@pytest.mark.asyncio
+@pytest_asyncio.fixture(name="pool_https_5p", scope="function")
 async def fixture_pool_https_5p() -> AsyncGenerator[Tuple[Pool, ...], None]:
     """
     Creates a collection of 5 communication pools using SSL/TLS
