@@ -6,56 +6,27 @@ from __future__ import annotations
 
 import inspect
 import pickle
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ClassVar,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
+from functools import partial
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ormsgpack
 from mypy_extensions import Arg, KwArg
 from typing_extensions import Protocol
 
+from tno.mpc.communication import serializer_plugins
+from tno.mpc.communication.exceptions import AnnotationError, RepetitionError
 from tno.mpc.communication.functions import init
 
 logger = init(__name__)
-try:
-    import gmpy2
 
-    from tno.mpc.encryption_schemes.utils import USE_GMPY2
-except ImportError:
-    USE_GMPY2 = False
-
-try:
-    import bitarray
-    import bitarray.util
-
-    USE_BITARRAY = True
-except ImportError:
-    USE_BITARRAY = False
-
-try:
-    import numpy as np
-    import numpy.typing as npt
-
-    USE_NUMPY = True
-except ImportError:
-    USE_NUMPY = False
-
-if TYPE_CHECKING:
-    from typeguard import typeguard_ignore as typeguard_ignore
-else:
-    from typing import no_type_check as typeguard_ignore
-
-GmpyTypes = Union["gmpy2.xmpz", "gmpy2.mpz", "gmpy2.mpfr", "gmpy2.mpq", "gmpy2.mpc"]
+SerializerFunction = Union[
+    Callable[[Arg(Any, "self"), KwArg(Any)], Any],
+    Callable[[Arg(Any, "obj"), KwArg(Any)], Any],
+]
+DeserializerFunction = Callable[[Arg(Any, "obj"), KwArg(Any)], Any]
+DorSFunction = TypeVar(
+    "DorSFunction", bound=Union[SerializerFunction, DeserializerFunction]
+)
 
 DEFAULT_PACK_OPTION = (
     ormsgpack.OPT_SERIALIZE_NUMPY
@@ -88,7 +59,14 @@ class SupportsSerialization(Protocol):
         """
 
 
-StandardT = TypeVar("StandardT", int, float, str)
+SERIALIZER_FUNCS: Dict[
+    str,
+    SerializerFunction,
+] = {}
+DESERIALIZER_FUNCS: Dict[
+    str,
+    DeserializerFunction,
+] = {}
 
 
 class Serialization:
@@ -102,65 +80,176 @@ class Serialization:
     - unpacking function that handles metadata and determines which deserialization needs to happen
     """
 
-    # dictionary for serialization functions of classes that are not specified here
-    custom_serialization_funcs: ClassVar[
-        Dict[
-            str,
-            Callable[[Arg(SupportsSerialization, "self"), KwArg(Any)], Any],
-        ]
-    ] = {}
-    # dictionary for deserialization functions of classes that are not specified here
-    custom_deserialization_funcs: ClassVar[
-        Dict[
-            str,
-            Callable[[Arg(Any, "obj"), KwArg(Any)], SupportsSerialization],
-        ]
-    ] = {}
-
-    # region serialization functions
     @staticmethod
-    def numpy_serialize(obj: npt.NDArray[Any], **_kwargs: Any) -> Dict[str, Any]:
-        r"""
-        Function for serializing numpy object arrays
-
-        :param obj: numpy object to serialize
-        :param \**_kwargs: optional extra keyword arguments
-        :return: serialized object
+    def register_class(
+        obj_class: Type[SupportsSerialization],
+        check_annotations: bool = True,
+        overwrite: bool = False,
+    ) -> None:
         """
-        return {"values": obj.tolist(), "shape": obj.shape}
+        Register (de)serialization logic associated to SupportsSerialization objects.
 
-    @staticmethod
-    def tuple_serialize(obj: Tuple[Any, ...], **_kwargs: Any) -> List[Any]:
-        r"""
-        Function for serializing tuples
-
-        :param obj: tuple object to serialize
-        :param \**_kwargs: optional extra keyword arguments
-        :return: serialized object
+        :param obj_class: object class to set serialization logic for.
+        :param check_annotations: validate return annotation of the serialization logic.
+        :param overwrite: Allow (silent) overwrite of currently registered serializers.
+        :raise RepetitionError: raised when serialization function is already defined for object class.
+        :raise TypeError: raised when provided object class has no (de)serialization function.
+        :raise AnnotationError: raised when the return annotation is inconsistent.
         """
-        return list(obj)
+        obj_class_name = obj_class.__name__
+        serialization_func: SerializerFunction = obj_class.serialize
+        deserialization_func: DeserializerFunction = obj_class.deserialize
+        Serialization.register(
+            serialization_func,
+            deserialization_func,
+            obj_class_name,
+            check_annotations=check_annotations,
+            overwrite=overwrite,
+        )
 
     @staticmethod
-    def int_serialize(obj: int, **_kwargs: Any) -> bytes:
-        r"""
-        Function for serializing Python ints
-
-        :param obj: int object to serialize
-        :param \**_kwargs: optional extra keyword arguments
-        :return: serialized object
+    def register(
+        serializer: SerializerFunction,
+        deserializer: DeserializerFunction,
+        *types: str,
+        check_annotations: bool = True,
+        overwrite: bool = False,
+    ) -> None:
         """
-        return obj.to_bytes((obj.bit_length() + 8) // 8, "little", signed=True)
+        Register serialization and deserialization functions.
+
+        :param serializer: Serializer function.
+        :param deserializer: Deserializer function.
+        :param types: Object types that the serializer can serialize.
+        :param check_annotations: Verify annotations of the (de)serializer conform to the protocol.
+        :param overwrite: Allow (silent) overwrite of currently registered serializers.
+        :raise RepetitionError: Attempted overwrite of registered serialization function.
+        :raise TypeError: Annotations do not conform to the protocol.
+        """
+        Serialization._register_serializer(
+            serializer,
+            types,
+            check_annotations=check_annotations,
+            overwrite=overwrite,
+        )
+        Serialization._register_deserializer(
+            deserializer,
+            types,
+            check_annotations=check_annotations,
+            overwrite=overwrite,
+        )
 
     @staticmethod
-    def bitarray_serialize(obj: bitarray.bitarray, **_kwargs: Any) -> bytes:
-        r"""
-        Function for serializing bitarray
-
-        :param obj: bitarray object to serialize
-        :param \**_kwargs: optional extra keyword arguments
-        :return: serialized object
+    def _register_serializer(
+        serializer: SerializerFunction,
+        types: Tuple[str, ...],
+        check_annotations: bool = True,
+        overwrite: bool = False,
+    ) -> None:
         """
-        return bitarray.util.serialize(obj)
+        Register a serializer function.
+
+        :param serializer: Serializer function.
+        :param types: Object types that the serializer can serialize.
+        :param check_annotations: Verify annotations of the serializer conform to the protocol.
+        :param overwrite: Allow (silent) overwrite of currently registered serializers.
+        :raise RepetitionError: Attempted overwrite of registered serialization function.
+        :raise TypeError: Annotations do not conform to the protocol.
+        """
+        if not callable(serializer):
+            raise TypeError("The provided serializer is not a function.")
+        if check_annotations:
+            signature = inspect.signature(serializer)
+            _validate_signature_has_kwargs(signature)
+            # For all deserializers registered to the given types, verify that serializer is
+            # compatible with their signatures.
+            same_type_deserializers = (
+                d for t, d in DESERIALIZER_FUNCS.items() if t in types
+            )
+            for des in same_type_deserializers:
+                _validate_signatures_consistent(
+                    serializer_signature=signature,
+                    deserializer_signature=inspect.signature(des),
+                )
+
+        Serialization._register(
+            SERIALIZER_FUNCS, serializer, types, overwrite=overwrite
+        )
+
+    @staticmethod
+    def _register_deserializer(
+        deserializer: DeserializerFunction,
+        types: Tuple[str, ...],
+        check_annotations: bool = True,
+        overwrite: bool = False,
+    ) -> None:
+        """
+        Register a deserializer function.
+
+        :param deserializer: Deserializer function.
+        :param types: Object types that the serializer can serialize.
+        :param check_annotations: Verify annotations of the deserializer conform to the protocol.
+        :param overwrite: Allow (silent) overwrite of currently registered serializers.
+        :raise RepetitionError: Attempted overwrite of registered serialization function.
+        :raise TypeError: Annotations do not conform to the protocol.
+        """
+        if not callable(deserializer):
+            raise TypeError("The provided deserializer is not a function.")
+        if check_annotations:
+            signature = inspect.signature(deserializer)
+            _validate_signature_has_kwargs(signature)
+            _validate_provided_return_annotation(signature, types)
+            _validate_signature_accepts_keyword(signature, "obj")
+            # For all serializers registered to the given types, verify that deserializer is
+            # compatible with their signatures.
+            same_type_serializers = (
+                s for t, s in SERIALIZER_FUNCS.items() if t in types
+            )
+            for ser in same_type_serializers:
+                _validate_signatures_consistent(
+                    serializer_signature=inspect.signature(ser),
+                    deserializer_signature=signature,
+                )
+
+        Serialization._register(
+            DESERIALIZER_FUNCS, deserializer, types, overwrite=overwrite
+        )
+
+    @staticmethod
+    def _register(
+        target_dict: Dict[str, DorSFunction],
+        d_or_s_function: DorSFunction,
+        types: Tuple[str, ...],
+        overwrite: bool,
+    ) -> None:
+        """
+        In-place add (de)serializer to a target dictionary for multiple keys.
+
+        :param target_dict: Target dictionary.
+        :param d_or_s_function: (De)serializer to register in the target dictionary
+        :param types: Types of objects that the provided (de)serializer can be applied to.
+        :param overwrite: Allow (silent) overwrite of currently registered serializers.
+        :raise RepetitionError: Attempted overwrite of registered (de)serializer.
+        """
+        for type_ in types:
+            if type_ in target_dict and not overwrite:
+                raise RepetitionError(
+                    f"The logic for type {type_} has already been set"
+                )
+            target_dict[type_] = d_or_s_function
+
+    @staticmethod
+    def clear_serialization_logic(reload_defaults: bool = True) -> None:
+        """
+        Clear all custom serialization (and deserialization) logic that was added to this class.
+
+        :param reload_defaults: After clearing, reload the (de)serialization logic that is
+            provided by the package.
+        """
+        SERIALIZER_FUNCS.clear()
+        DESERIALIZER_FUNCS.clear()
+        if reload_defaults:
+            serializer_plugins.register_defaults()
 
     @staticmethod
     def default_serialize(obj: Any, use_pickle: bool, **_kwargs: Any) -> bytes:
@@ -183,114 +272,6 @@ class Serialization:
         )
 
     @staticmethod
-    @typeguard_ignore
-    def gmpy_serialize(obj: GmpyTypes, **_kwargs: Any) -> bytes:
-        r"""
-        Function for serializing gmpy objects
-
-        :param obj: gmpy object to serialize
-        :param \**_kwargs: optional extra keyword arguments
-        :return: serialized object
-        """
-        return gmpy2.to_binary(obj)
-
-    @staticmethod
-    def clear_new_serialization_logic() -> None:
-        """
-        Clear all custom serialization (and deserialization) logic that was added to this class.
-        """
-        Serialization.custom_serialization_funcs = {}
-        Serialization.custom_deserialization_funcs = {}
-
-    @staticmethod
-    def set_serialization_logic(
-        obj_class: Type[SupportsSerialization], check_annotations: bool = True
-    ) -> None:
-        """
-        Function for storing serialization logic for classes that have not been specified here or
-        need to be overridden
-
-        :param obj_class: object class to set serialization logic for
-        :param check_annotations: validate return annotation of the serialization logic
-        :raise RepetitionError: raised when serialization function is already defined for object class
-        :raise TypeError: raised when provided object class has no (de)serialization function
-        :raise AnnotationError: raised when the return annotation is inconsistent
-        """
-        obj_class_name = obj_class.__name__
-        if (
-            obj_class_name in Serialization.custom_serialization_funcs
-            and obj_class_name in Serialization.custom_deserialization_funcs
-        ):
-            raise RepetitionError(
-                "The serialization logic for this class has already been set"
-            )
-        serialization_func = obj_class.serialize
-        deserialization_func = obj_class.deserialize
-        if not callable(serialization_func):
-            raise TypeError(
-                "the provided class does have a serialize attribute, but it is not a function"
-            )
-        if not callable(deserialization_func):
-            raise TypeError(
-                "the provided class does have a deserialize attribute, but it is not a function"
-            )
-        if check_annotations:
-            ser_signature = inspect.signature(serialization_func)
-            if not any(
-                param
-                for param in ser_signature.parameters.values()
-                if param.kind == param.VAR_KEYWORD
-            ):
-                raise TypeError(
-                    "The provided class has a serialization function but does not accept a dict "
-                    "of keyword arguments that aren't bound to any other parameter, "
-                    "i.e. a '**kwargs' parameter. This is required in the function definition. "
-                    "These keyword arguments should also be forwarded to the next serialization "
-                    "call."
-                )
-            deser_signature = inspect.signature(deserialization_func)
-            if deser_signature.return_annotation not in (obj_class.__name__, obj_class):
-                raise AnnotationError(
-                    f"The provided class has a deserialization function, but it does not return "
-                    f"an object of type {obj_class_name}. Make sure the function has type "
-                    f"annotation '{obj_class_name}' or set check_annotations to False if this is "
-                    f"intentional behaviour."
-                )
-            if not any(
-                param
-                for param in deser_signature.parameters.values()
-                if param.kind == param.VAR_KEYWORD
-            ):
-                raise TypeError(
-                    "The provided class has a deserialization function but does not accept a dict "
-                    "of keyword arguments that aren't bound to any other parameter, "
-                    "i.e. a '**kwargs' parameter. This is required in the function definition. "
-                    "These keyword arguments should also be forwarded to the next deserialization "
-                    "call."
-                )
-            try:
-                deser_signature.parameters["obj"]
-            except KeyError as exception:
-                raise TypeError(
-                    "'obj' parameter missing in deserialization function."
-                ) from exception
-            if (
-                ser_signature.return_annotation
-                != deser_signature.parameters["obj"].annotation
-            ):
-                raise AnnotationError(
-                    f"Return type of serialization function ({ser_signature.return_annotation}) "
-                    f"does not match type of 'obj' parameter in deserialization function "
-                    f"({deser_signature.parameters['obj'].annotation})."
-                )
-
-        # The object contains valid serialization logic, so we save it for later
-        Serialization.custom_serialization_funcs[obj_class_name] = serialization_func
-        Serialization.custom_deserialization_funcs[
-            obj_class_name
-        ] = deserialization_func
-
-    @staticmethod
     def serialize(
         obj: Any,
         use_pickle: bool,
@@ -304,24 +285,19 @@ class Serialization:
         :param \**kwargs: optional extra keyword arguments
         :return: serialized object
         """
+        # pylint: disable=missing-raises-doc
 
         obj_class = obj.__class__
         obj_class_name = obj_class.__name__
 
         # Take the default serialization function
-        serialization_func: Callable[
-            ..., Any
-        ] = lambda _, **l_kwargs: Serialization.default_serialize(
-            _, use_pickle, **kwargs
+        default_serializer: SerializerFunction = partial(
+            Serialization.default_serialize, use_pickle=use_pickle
         )
-
-        # Check if there is a specified serialization function in this class
-        serialization_func = SERIALIZATION_FUNCS.get(obj_class_name, serialization_func)
 
         # check if the serialization logic for the object has been added in an earlier stage
-        serialization_func = Serialization.custom_serialization_funcs.get(
-            obj_class_name, serialization_func
-        )
+        serialization_func = SERIALIZER_FUNCS.get(obj_class_name, default_serializer)
+
         try:
             data = serialization_func(obj, **kwargs)
         except Exception:
@@ -329,8 +305,6 @@ class Serialization:
             raise
         ser_obj = {"type": obj_class_name, "data": data}
         return ser_obj
-
-    # endregion
 
     @staticmethod
     def pack(
@@ -348,6 +322,7 @@ class Serialization:
         :param use_pickle: set to true if one wishes to use pickle as a fallback packer
         :param option: ormsgpack options can be specified through this parameter
         :param \**kwargs: optional extra keyword arguments
+        :raise TypeError: Failed to serialize the provided object
         :return: packed object (serialized and annotated)
         """
         dict_object = {"object": obj, "id": msg_id}
@@ -368,68 +343,6 @@ class Serialization:
         return packed_object
 
     @staticmethod
-    def numpy_deserialize(
-        obj: Dict[str, List[Any]], **kwargs: Any
-    ) -> npt.NDArray[np.object_]:
-        r"""
-        Function for serializing numpy object arrays
-
-        :param obj: numpy object to serialize
-        :param \**kwargs: optional extra keyword arguments
-        :return: deserialized object
-        """
-        # ormsgpack can handle native numpy dtypes
-        result: npt.NDArray[np.object_] = np.empty(obj["shape"], dtype=object)
-        if obj["values"]:
-            result[:] = Serialization.collection_deserialize(obj["values"], **kwargs)
-        return result
-
-    @staticmethod
-    def tuple_deserialize(obj: List[Any], **kwargs: Any) -> Tuple[Any, ...]:
-        r"""
-        Function for deserializing tuples
-
-        :param obj: object to deserialize
-        :param \**kwargs: optional extra keyword arguments
-        :return: deserialized tuple object
-        """
-        return tuple(Serialization.collection_deserialize(obj, **kwargs))
-
-    @staticmethod
-    def int_deserialize(obj: bytes, **_kwargs: Any) -> int:
-        r"""
-        Function for deserializing Python ints
-
-        :param obj: object to deserialize
-        :param \**_kwargs: optional extra keyword arguments
-        :return: deserialized int object
-        """
-        return int.from_bytes(obj, "little", signed=True)
-
-    @staticmethod
-    def bitarray_deserialize(obj: bytes, **_kwargs: Any) -> bitarray.bitarray:
-        r"""
-        Function for deserializing bitarrays
-
-        :param obj: object to deserialize
-        :param \**_kwargs: optional extra keyword arguments
-        :return: deserialized bitarray object
-        """
-        return bitarray.util.deserialize(obj)
-
-    @staticmethod
-    @typeguard_ignore
-    def gmpy_deserialize(obj: bytes, **_kwargs: Any) -> GmpyTypes:
-        r"""
-        Function for deserializing gmpy objects
-
-        :param obj: object to deserialize
-        :param \**_kwargs: optional extra keyword arguments
-        :return: deserialized gmpy object
-        """
-        return gmpy2.from_binary(obj)
-
-    @staticmethod
     def default_deserialize(
         obj: bytes, use_pickle: bool = False, **_kwargs: Any
     ) -> Any:
@@ -440,6 +353,8 @@ class Serialization:
         :param obj: object to deserialize
         :param use_pickle: set to true if one wishes to use pickle as a fallback deserializer
         :param \**_kwargs: optional extra keyword arguments
+        :raise NotImplementedError: Default serialization not possible for the provided object and
+            arguments
         :return: deserialized object
         """
         if use_pickle:
@@ -505,14 +420,13 @@ class Serialization:
                 obj = Serialization.collection_deserialize(
                     obj, use_pickle=use_pickle, **kwargs
                 )
-            if obj["type"] in Serialization.custom_deserialization_funcs:
-                deserialization_func = Serialization.custom_deserialization_funcs[
-                    obj["type"]
-                ]
-            elif obj["type"] in DESERIALIZATION_FUNCS:
-                deserialization_func = DESERIALIZATION_FUNCS[obj["type"]]
-            else:
-                deserialization_func = Serialization.default_deserialize
+
+            default_deserializer: DeserializerFunction = partial(
+                Serialization.default_deserialize, use_pickle=use_pickle
+            )
+            deserialization_func = DESERIALIZER_FUNCS.get(
+                obj["type"], default_deserializer
+            )
             return deserialization_func(obj["data"], use_pickle=use_pickle, **kwargs)
         if isinstance(obj, dict):
             return Serialization.collection_deserialize(
@@ -536,6 +450,7 @@ class Serialization:
         :param use_pickle: set to true if one wishes to use pickle as a fallback deserializer
         :param option: ormsgpack options can be specified through this parameter
         :param \**kwargs: optional extra keyword arguments
+        :raise TypeError: Failed to deserialize the provided object
         :return: unpacked object
         """
         try:
@@ -554,72 +469,84 @@ class Serialization:
         return dict_obj["id"], deserialized_object
 
 
-DESERIALIZATION_FUNCS: Dict[str, Callable[[Arg(Any, "obj"), KwArg(Any)], Any]] = {
-    "int": Serialization.int_deserialize,
-    "tuple": Serialization.tuple_deserialize,
-}
-
-SERIALIZATION_FUNCS: Dict[str, Callable[[Arg(Any, "obj"), KwArg(Any)], Any]] = {
-    "int": Serialization.int_serialize,
-    "tuple": Serialization.tuple_serialize,
-}
-
-if USE_NUMPY:
-    DESERIALIZATION_FUNCS = {
-        **DESERIALIZATION_FUNCS,
-        **{
-            "ndarray": Serialization.numpy_deserialize,
-        },
-    }
-    SERIALIZATION_FUNCS = {
-        **SERIALIZATION_FUNCS,
-        **{
-            "ndarray": Serialization.numpy_serialize,
-        },
-    }
-if USE_BITARRAY:
-    DESERIALIZATION_FUNCS = {
-        **DESERIALIZATION_FUNCS,
-        **{
-            "bitarray": Serialization.bitarray_deserialize,
-        },
-    }
-    SERIALIZATION_FUNCS = {
-        **SERIALIZATION_FUNCS,
-        **{
-            "bitarray": Serialization.bitarray_serialize,
-        },
-    }
-if USE_GMPY2:
-    DESERIALIZATION_FUNCS = {
-        **DESERIALIZATION_FUNCS,
-        **{
-            "xmpz": Serialization.gmpy_deserialize,
-            "mpz": Serialization.gmpy_deserialize,
-            "mpfr": Serialization.gmpy_deserialize,
-            "mpq": Serialization.gmpy_deserialize,
-            "mpc": Serialization.gmpy_deserialize,
-        },
-    }
-    SERIALIZATION_FUNCS = {
-        **SERIALIZATION_FUNCS,
-        **{
-            "xmpz": Serialization.gmpy_serialize,
-            "mpz": Serialization.gmpy_serialize,
-            "mpfr": Serialization.gmpy_serialize,
-            "mpq": Serialization.gmpy_serialize,
-            "mpc": Serialization.gmpy_serialize,
-        },
-    }
-
-
-class AnnotationError(Exception):
+def _validate_signature_has_kwargs(signature: inspect.Signature) -> None:
     """
-    Raised when an improperly function is incorrectly annotated
+    Validate that the provided signature accepts kwargs.
+
+    :param signature: Signature to validate.
+    :raise TypeError: Signature does not contain kwargs.
     """
+    if not any(
+        param
+        for param in signature.parameters.values()
+        if param.kind == param.VAR_KEYWORD
+    ):
+        raise TypeError(
+            "The provided (de)serializer does not accept a dict of keyword arguments that aren't "
+            "bound to any other parameter, i.e. a '**kwargs' parameter. This is required in the "
+            "function definition. These keyword arguments should also be forwarded to the next "
+            "(de)serialization call."
+        )
 
 
-class RepetitionError(Exception):
+def _validate_provided_return_annotation(
+    signature: inspect.Signature, types: Tuple[str, ...]
+) -> None:
     """
-    Raised when the action has already been performed and should not be repeated
+    Validate that the signature agrees with the provided types.
+
+    :param signature: Signature to validate.
+    :param types: Types that are supposedly consistent with the signature.
+    :raise AnnotationError: Types and signature do not agree.
     """
+    if (
+        signature.return_annotation not in types
+        and signature.return_annotation.__name__ not in types
+    ):
+        raise AnnotationError(
+            f"Expected the provided deserialization function to return objects of type {types}, "
+            f"but detected return type annotation for {signature.return_annotation}. Make sure "
+            f"the function has type annotation '{types}' or set 'check_annotations' to False if "
+            "this is intentional behaviour."
+        )
+
+
+def _validate_signature_accepts_keyword(
+    signature: inspect.Signature, word: str
+) -> None:
+    """
+    Validate that the signature has a certain parameter (keyword).
+
+    :param signature: Signature to validate.
+    :param word: Keyword to test against.
+    :raise TypeError: Signature does not accept keyword.
+    """
+    try:
+        signature.parameters[word]
+    except KeyError as exception:
+        raise TypeError(
+            "The provided (de)serializer is missing the following parameter in its signature: "
+            f"{word}."
+        ) from exception
+
+
+def _validate_signatures_consistent(
+    serializer_signature: inspect.Signature, deserializer_signature: inspect.Signature
+) -> None:
+    """
+    Validate that annotations of serializer and deserializer are consistent.
+
+    :param serializer_signature: Signature of serializer.
+    :param deserializer_signature: Signature of deserializer.
+    :raise AnnotationError: Return type of serializer does not agree with expected input type of
+        deserializer.
+    """
+    if (
+        serializer_signature.return_annotation
+        != deserializer_signature.parameters["obj"].annotation
+    ):
+        raise AnnotationError(
+            f"Return type of serialization function ({serializer_signature.return_annotation}) "
+            f"does not match type of 'obj' parameter in deserialization function "
+            f"({deserializer_signature.parameters['obj'].annotation})."
+        )

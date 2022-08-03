@@ -191,8 +191,8 @@ async def test_http_server_custom_kwargs(pool_http_2p: Tuple[Pool, Pool]) -> Non
     """
     ClassCorrectKwargs.origin = []
     ClassCorrectKwargs.destination = []
-    Serialization.clear_new_serialization_logic()
-    Serialization.set_serialization_logic(ClassCorrectKwargs)
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(ClassCorrectKwargs)
     obj = ClassCorrectKwargs([1, 2, 3, 4], "test")
     pool_http_2p[0].asend("local1", obj)
     res = await pool_http_2p[1].recv("local0")
@@ -215,9 +215,9 @@ async def test_http_server_custom_kwargs2(pool_http_2p: Tuple[Pool, Pool]) -> No
     """
     ClassCorrectKwargs.origin = []
     ClassCorrectKwargs.destination = []
-    Serialization.clear_new_serialization_logic()
-    Serialization.set_serialization_logic(ClassCorrectKwargs)
-    Serialization.set_serialization_logic(ClassCorrectKwargs2)
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(ClassCorrectKwargs)
+    Serialization.register_class(ClassCorrectKwargs2)
     obj = ClassCorrectKwargs([1, 2, 3, 4], "test")
     obj2 = ClassCorrectKwargs2([5, 6, 7, 8], obj)
     pool_http_2p[0].asend("local1", obj2)

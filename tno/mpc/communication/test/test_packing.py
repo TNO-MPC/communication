@@ -41,6 +41,7 @@ def pack_unpack_test(
     :param comparator: function comparing two objects, returning True
         if they are equal
     :param expect: expected result of comparison
+    :param use_pickle: set to true if one wishes to use pickle as a fallback deserializer
     :param serial_option: ormsgpack option for serialization
     :param deserial_option: ormsgpack option for deserialization
     :param \**kwargs: optional extra keyword arguments
@@ -307,9 +308,9 @@ def test_custom_serialization_no_logic() -> None:
     Tests whether an AttributeError exception is raised when custom
     serialization logic is missing
     """
-    Serialization.clear_new_serialization_logic()
+    Serialization.clear_serialization_logic()
     with pytest.raises(AttributeError):
-        Serialization.set_serialization_logic(ClassNoLogic)  # type: ignore[arg-type]
+        Serialization.register_class(ClassNoLogic)  # type: ignore[arg-type]
 
 
 def test_custom_serialization_no_functions() -> None:
@@ -317,9 +318,9 @@ def test_custom_serialization_no_functions() -> None:
     Tests whether a TypeError exception is raised when custom  serialization
     functions are missing
     """
-    Serialization.clear_new_serialization_logic()
+    Serialization.clear_serialization_logic()
     with pytest.raises(TypeError):
-        Serialization.set_serialization_logic(ClassNoFunctions)  # type: ignore[arg-type]
+        Serialization.register_class(ClassNoFunctions)  # type: ignore[arg-type]
 
 
 def test_custom_serialization_wrong_signature() -> None:
@@ -327,9 +328,9 @@ def test_custom_serialization_wrong_signature() -> None:
     Tests whether a TypeError exception is raised when deserialization
     functions have wrong signature
     """
-    Serialization.clear_new_serialization_logic()
+    Serialization.clear_serialization_logic()
     with pytest.raises(TypeError):
-        Serialization.set_serialization_logic(ClassWrongSignature)
+        Serialization.register_class(ClassWrongSignature)
 
 
 def test_custom_serialization_mismatch_type() -> None:
@@ -337,9 +338,9 @@ def test_custom_serialization_mismatch_type() -> None:
     Tests whether an AnnotationError exception is raised when deserialization
     functions 'obj' and serialization return type mismatch
     """
-    Serialization.clear_new_serialization_logic()
+    Serialization.clear_serialization_logic()
     with pytest.raises(AnnotationError):
-        Serialization.set_serialization_logic(ClassMismatchType)
+        Serialization.register_class(ClassMismatchType)
 
 
 def test_custom_serialization_no_annotation() -> None:
@@ -347,9 +348,9 @@ def test_custom_serialization_no_annotation() -> None:
     Tests whether an AnnotationError exception is raised when serialization
     functions are not annotated
     """
-    Serialization.clear_new_serialization_logic()
+    Serialization.clear_serialization_logic()
     with pytest.raises(AnnotationError):
-        Serialization.set_serialization_logic(ClassNoAnnotation)
+        Serialization.register_class(ClassNoAnnotation)
 
 
 def test_custom_serialization_correct_double() -> None:
@@ -357,11 +358,11 @@ def test_custom_serialization_correct_double() -> None:
     Tests whether a RepetitionError exception is raised when serialization
     functions is set twice
     """
-    Serialization.clear_new_serialization_logic()
+    Serialization.clear_serialization_logic()
     with pytest.raises(RepetitionError):
-        Serialization.set_serialization_logic(ClassCorrect)
+        Serialization.register_class(ClassCorrect)
         # setting logic twice makes no sense. This should return a RepetitionError
-        Serialization.set_serialization_logic(ClassCorrect)
+        Serialization.register_class(ClassCorrect)
         obj = ClassCorrect(1)
         pack_unpack_test(obj, lambda a, b: a.value == b.value)
 
@@ -371,9 +372,9 @@ def test_custom_serialization_no_kwargs() -> None:
     Tests whether a TypeError exception is raised when serialization functions do not include the
     **kwargs keyword.
     """
-    Serialization.clear_new_serialization_logic()
+    Serialization.clear_serialization_logic()
     with pytest.raises(TypeError):
-        Serialization.set_serialization_logic(ClassNoKwargs)  # type: ignore[arg-type]
+        Serialization.register_class(ClassNoKwargs)  # type: ignore[arg-type]
 
 
 class ClassNoLogic:
@@ -759,8 +760,8 @@ def test_custom_serialization_correct(
 
     :param correct_class: a correctly implemented serialization class
     """
-    Serialization.clear_new_serialization_logic()
-    Serialization.set_serialization_logic(correct_class)
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(correct_class)
     obj = correct_class(1)
     pack_unpack_test(obj, lambda a, b: a.value == b.value)
 
@@ -782,9 +783,9 @@ def test_custom_serialization_correct2(
     :param correct_class: a correctly implemented serialization class
     :param correct_class_2: a correctly implemented serialization class
     """
-    Serialization.clear_new_serialization_logic()
-    Serialization.set_serialization_logic(correct_class)
-    Serialization.set_serialization_logic(correct_class_2)
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(correct_class)
+    Serialization.register_class(correct_class_2)
     obj = correct_class(1)
     pack_unpack_test(obj, lambda a, b: a.value == b.value)
     obj2 = correct_class_2([1, 2, 3, 4], "test")
@@ -797,8 +798,8 @@ def test_custom_serialization_correct_kwargs() -> None:
     """
     ClassCorrectKwargs.origin = []
     ClassCorrectKwargs.destination = []
-    Serialization.clear_new_serialization_logic()
-    Serialization.set_serialization_logic(ClassCorrectKwargs)
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(ClassCorrectKwargs)
     obj = ClassCorrectKwargs([1, 2, 3, 4], "test")
     pack_unpack_test(
         obj,
@@ -818,9 +819,9 @@ def test_custom_serialization_correct_kwargs2() -> None:
     """
     ClassCorrectKwargs.origin = []
     ClassCorrectKwargs.destination = []
-    Serialization.clear_new_serialization_logic()
-    Serialization.set_serialization_logic(ClassCorrectKwargs)
-    Serialization.set_serialization_logic(ClassCorrectKwargs2)
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(ClassCorrectKwargs)
+    Serialization.register_class(ClassCorrectKwargs2)
     obj = ClassCorrectKwargs([1, 2, 3, 4], "test")
     obj2 = ClassCorrectKwargs2([5, 6, 7, 8], obj)
     pack_unpack_test(

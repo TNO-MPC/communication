@@ -1,10 +1,13 @@
 """
-This module contains helper functions
+This module contains helper functions.
 """
 
 import logging
 import signal
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Iterator
+
+from tno.mpc.communication.exceptions import OptionalImportError
 
 
 def handle_sigterm(*_args: Any) -> None:
@@ -31,3 +34,17 @@ def init(name: str, logger_level: int = logging.INFO) -> logging.Logger:
     logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logger.setLevel(logger_level)
     return logger
+
+
+@contextmanager
+def redirect_importerror_to_optionalimporterror() -> Iterator[None]:
+    """
+    Redirect ImportError to OptionalImportError.
+
+    :raise OptionalImportError: Managed context raised ImportError
+    :return: Pass control from within a try block
+    """
+    try:
+        yield
+    except ImportError as e:  # pylint: disable=invalid-name
+        raise OptionalImportError from e

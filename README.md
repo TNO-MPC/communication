@@ -9,7 +9,7 @@ The package tno.mpc.communication is part of the TNO Python Toolbox.
 
 ## Documentation
 
-Documentation of the tno.mpc.communication package can be found [here](https://docs.mpc.tno.nl/communication/3.4.1).
+Documentation of the tno.mpc.communication package can be found [here](https://docs.mpc.tno.nl/communication/4.0.0).
 
 ## Install
 
@@ -240,4 +240,86 @@ await pool.send("Client 1", enum_obj)
 # Client 1
 res = await pool.recv("Client 0")  # 2 <class 'int'>
 enum_res = TestEnum(res)  # TestEnum.B <enum 'TestEnum'>
+```
+
+## Example code
+Below is a very minimal example of how to use the library. 
+It consists of two instances, Alice and Bob, who greet each other.
+Here, Alice runs on localhost and uses port 61001 for sending/receiving.
+Bob also runs on localhost, but uses port 61002.
+
+`alice.py`
+```python
+import asyncio
+
+from tno.mpc.communication import Pool
+
+
+async def async_main():
+    # Create the pool for Alice.
+    # Alice listens on port 61001 and adds Bob as client.
+    pool = Pool()
+    pool.add_http_server(addr="127.0.0.1", port=61001)
+    pool.add_http_client("Bob", addr="127.0.0.1", port=61002)
+
+    # Alice sends a message to Bob and waits for a reply.
+    # She prints the reply and shuts down the pool
+    await pool.send("Bob", "Hello Bob! This is Alice speaking.")
+    reply = await pool.recv("Bob")
+    print(reply)
+    await pool.shutdown()
+
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(async_main())
+```
+`bob.py`
+```python
+import asyncio
+
+from tno.mpc.communication import Pool
+
+
+async def async_main():
+    # Create the pool for Bob.
+    # Bob listens on port 61002 and adds Alice as client.
+    pool = Pool()
+    pool.add_http_server(addr="127.0.0.1", port=61002)
+    pool.add_http_client("Alice", addr="127.0.0.1", port=61001)
+
+    # Bob waits for a message from Alice and prints it.
+    # He replies and shuts down his pool instance.
+    message = await pool.recv("Alice")
+    print(message)
+    await pool.send("Alice", "Hello back to you, Alice!")
+    await pool.shutdown()
+
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(async_main())
+```
+
+To run this example, run each of the files in a separate terminal window.
+Note that if `alice.py` is started prior to `bob.py`, it will throw a `ClientConnectorError`.
+Namely, Alice tries to send a message to port 61002, which has not been opened by Bob yet. 
+After starting `bob.py`, the error disappears.
+
+The outputs in the two terminals will be something similar to the following:
+```bash
+>>> python alice.py
+2022-07-07 09:36:20,220 - tno.mpc.communication.httphandlers - INFO - Serving on 127.0.0.1:61001
+2022-07-07 09:36:20,230 - tno.mpc.communication.httphandlers - INFO - Received message from 127.0.0.1:61002
+Hello back to you, Bob!
+2022-07-07 09:36:20,232 - tno.mpc.communication.httphandlers - INFO - HTTPServer: Shutting down server task
+2022-07-07 09:36:20,232 - tno.mpc.communication.httphandlers - INFO - Server 127.0.0.1:61001 shutdown
+```
+```bash
+>>> python bob.py
+2022-07-07 09:36:16,915 - tno.mpc.communication.httphandlers - INFO - Serving on 127.0.0.1:61002
+2022-07-07 09:36:20,223 - tno.mpc.communication.httphandlers - INFO - Received message from 127.0.0.1:61001
+Hello Bob! This is Alice speaking.
+2022-07-07 09:36:20,232 - tno.mpc.communication.httphandlers - INFO - HTTPServer: Shutting down server task
+2022-07-07 09:36:20,256 - tno.mpc.communication.httphandlers - INFO - Server 127.0.0.1:61002 shutdown
 ```

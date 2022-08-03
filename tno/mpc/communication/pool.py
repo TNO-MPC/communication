@@ -10,7 +10,7 @@ import logging
 import socket
 import ssl
 from asyncio import Future
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
 
 from aiohttp import ClientTimeout
 

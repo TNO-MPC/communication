@@ -11,12 +11,11 @@ import ssl
 from asyncio import Future
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional, Union
 
-import ormsgpack as ormsgpack
 from aiohttp import ClientSession, ClientTimeout, web
 
 import tno.mpc.communication  # to make sphinx find Pool correctly  # pylint: disable=unused-import
-from tno.mpc.communication.functions import init
 
+from .functions import init
 from .serialization import DEFAULT_PACK_OPTION, Serialization
 
 # to make mypy recognize pool (while not breaking sphinx or causing circular imports)

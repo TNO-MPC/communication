@@ -2,6 +2,7 @@
 This module tests packing and unpacking of objects
 (serialization/deserialization) when gmpy is installed
 """
+# pylint: disable=wrong-import-position
 
 import pytest
 
@@ -10,7 +11,7 @@ import gmpy2
 import numpy as np
 import ormsgpack
 
-from tno.mpc.communication.serialization import GmpyTypes, typeguard_ignore
+from tno.mpc.communication.serializer_plugins.gmpy import GmpyTypes, typeguard_ignore
 from tno.mpc.communication.test.test_packing import pack_unpack_test
 
 
