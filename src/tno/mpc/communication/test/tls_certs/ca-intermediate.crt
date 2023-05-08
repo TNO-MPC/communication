@@ -1,0 +1,74 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 1 (0x1)
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN=My Root CA
+        Validity
+            Not Before: Mar 27 18:01:32 2023 GMT
+            Not After : Aug 12 18:01:32 2050 GMT
+        Subject: CN=ca-intermediate
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                RSA Public-Key: (2048 bit)
+                Modulus:
+                    00:9d:9c:65:1b:55:fb:7b:e0:4c:5f:9b:19:18:27:
+                    f4:33:38:b4:d4:5a:d6:a5:e6:8f:5e:44:2c:86:82:
+                    dc:77:0f:43:61:3d:34:13:a5:92:bc:39:e7:9b:bd:
+                    be:db:01:d6:90:72:94:37:ce:ab:5e:ad:1e:00:c8:
+                    74:6a:f3:04:63:80:a2:71:9d:c8:9d:33:62:ca:66:
+                    f1:89:55:de:99:a3:78:ff:b0:cb:f8:95:4a:bd:3f:
+                    a0:bc:78:6f:bd:35:05:86:dc:f7:66:f7:7a:82:fe:
+                    47:bd:58:36:fd:08:ed:78:c3:32:ed:d3:e5:da:46:
+                    ab:62:f3:9f:1d:5e:8b:b9:98:7a:a5:e3:b2:91:44:
+                    ca:39:79:8e:6d:66:af:b2:fe:09:a6:48:c1:6a:9b:
+                    30:d3:df:2c:c9:cf:0e:52:b9:37:be:9f:b7:88:57:
+                    87:74:da:8e:4b:4b:10:bf:ae:6a:0e:ec:96:d5:72:
+                    43:47:6f:1e:52:64:0a:bf:f4:96:6d:78:77:be:c7:
+                    31:2a:f8:2a:4e:5a:81:31:30:61:ce:74:36:c4:90:
+                    c9:4a:0e:3d:0f:88:68:a6:5e:17:b8:9e:4a:1e:62:
+                    f8:22:17:84:72:6f:79:d3:78:e9:da:9a:df:90:d7:
+                    d3:c3:3c:31:6c:87:e8:31:c3:74:77:09:e7:f4:a6:
+                    84:87
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: critical
+                CA:TRUE
+            X509v3 Key Usage: critical
+                Certificate Sign
+            X509v3 Subject Alternative Name: 
+                IP Address:127.0.0.1, IP Address:192.168.73.120, IP Address:192.168.73.121
+    Signature Algorithm: sha256WithRSAEncryption
+         60:cc:d9:af:bf:1f:c8:06:b4:a1:5a:30:30:7d:72:b7:df:12:
+         79:39:21:84:9c:14:68:87:c8:13:be:b4:f8:bb:db:2a:18:68:
+         41:2c:a8:30:4b:5f:3e:a2:14:38:b5:97:80:79:9f:0e:d9:9f:
+         99:84:2d:28:c2:78:c3:82:41:ff:e0:a4:2b:62:ce:c2:0f:14:
+         f0:7b:b5:c5:4a:f9:d5:e9:21:3b:dc:33:90:4a:8e:f8:1d:06:
+         06:28:d1:31:90:26:b2:1d:c3:40:15:28:cb:07:55:e8:c2:fa:
+         7a:86:26:42:9b:be:82:2c:d9:39:df:8a:a4:8a:f1:9a:9a:61:
+         95:3e:f3:71:e4:9a:53:92:0d:14:c4:9e:66:45:4a:3f:b3:eb:
+         bb:15:a3:e1:3b:92:1a:10:99:74:99:41:3c:61:e9:76:cf:93:
+         db:98:de:c1:65:0c:ce:17:2b:be:5c:f4:c9:cc:0a:60:9a:d0:
+         22:6c:8f:d9:65:39:4a:99:8c:5c:65:0b:71:dd:8e:76:01:59:
+         62:b6:0c:9c:99:c6:ac:41:44:18:b2:0f:8a:ad:89:41:00:c7:
+         39:ac:77:60:c9:d9:9b:36:9b:16:3e:75:55:32:10:ed:b4:5c:
+         38:62:23:81:8f:29:eb:3e:c6:7f:a0:b8:f3:4d:13:8b:7c:57:
+         2b:79:2f:4b
+-----BEGIN CERTIFICATE-----
+MIIC7DCCAdSgAwIBAgIBATANBgkqhkiG9w0BAQsFADAVMRMwEQYDVQQDDApNeSBS
+b290IENBMCAXDTIzMDMyNzE4MDEzMloYDzIwNTAwODEyMTgwMTMyWjAaMRgwFgYD
+VQQDDA9jYS1pbnRlcm1lZGlhdGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEK
+AoIBAQCdnGUbVft74ExfmxkYJ/QzOLTUWtal5o9eRCyGgtx3D0NhPTQTpZK8Oeeb
+vb7bAdaQcpQ3zqterR4AyHRq8wRjgKJxncidM2LKZvGJVd6Zo3j/sMv4lUq9P6C8
+eG+9NQWG3Pdm93qC/ke9WDb9CO14wzLt0+XaRqti858dXou5mHql47KRRMo5eY5t
+Zq+y/gmmSMFqmzDT3yzJzw5SuTe+n7eIV4d02o5LSxC/rmoO7JbVckNHbx5SZAq/
+9JZteHe+xzEq+CpOWoExMGHOdDbEkMlKDj0PiGimXhe4nkoeYvgiF4Ryb3nTeOna
+mt+Q19PDPDFsh+gxw3R3Cef0poSHAgMBAAGjQDA+MA8GA1UdEwEB/wQFMAMBAf8w
+DgYDVR0PAQH/BAQDAgIEMBsGA1UdEQQUMBKHBH8AAAGHBMCoSXiHBMCoSXkwDQYJ
+KoZIhvcNAQELBQADggEBAGDM2a+/H8gGtKFaMDB9crffEnk5IYScFGiHyBO+tPi7
+2yoYaEEsqDBLXz6iFDi1l4B5nw7Zn5mELSjCeMOCQf/gpCtizsIPFPB7tcVK+dXp
+ITvcM5BKjvgdBgYo0TGQJrIdw0AVKMsHVejC+nqGJkKbvoIs2TnfiqSK8ZqaYZU+
+83HkmlOSDRTEnmZFSj+z67sVo+E7khoQmXSZQTxh6XbPk9uY3sFlDM4XK75c9MnM
+CmCa0CJsj9llOUqZjFxlC3HdjnYBWWK2DJyZxqxBRBiyD4qtiUEAxzmsd2DJ2Zs2
+mxY+dVUyEO20XDhiI4GPKes+xn+guPNNE4t8Vyt5L0s=
+-----END CERTIFICATE-----

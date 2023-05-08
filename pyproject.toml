@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tno.mpc.communication"
+description = "MPC Communication module"
+readme = "README.md"
+authors = [{name = "TNO MPC Lab", email = "mpclab@tno.nl"}]
+maintainers = [{name = "TNO MPC Lab", email = "mpclab@tno.nl"}]
+keywords = [
+    "TNO",
+    "MPC",
+    "multi-party computation",
+    "communication",
+]
+license = {text = "Apache License, Version 2.0"}
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "Typing :: Typed",
+    "Topic :: Security :: Cryptography",
+]
+urls = {Homepage = "https://mpc.tno.nl/", Documentation = "https://docs.mpc.tno.nl/communication/4.5.0", Source = "https://github.com/TNO-MPC/communication"}
+dynamic = ["version"]
+requires-python = ">=3.7"
+dependencies = [
+    "aiohttp",
+    "mypy_extensions",
+    "ormsgpack>=1.1.0",
+    "typing_extensions~=4.0; python_version<'3.8'",
+]
+
+[project.optional-dependencies]
+bitarray = [
+    "bitarray",
+]
+gmpy = [
+    "tno.mpc.encryption_schemes.utils[gmpy]",
+]
+gmpy2 = [
+    "tno.mpc.encryption_schemes.utils[gmpy]",
+]
+numpy = [
+    "numpy",
+]
+pandas = [
+    "pandas",
+    "pyarrow",
+]
+tls = [
+    "pyOpenSSL",
+]
+tests = [
+    "tno.mpc.communication[bitarray,gmpy,numpy,pandas,tls]",
+    "pandas-stubs",
+    "pytest",
+    "pytest-asyncio",
+    "typeguard",
+]
+
+[tool.setuptools]
+platforms = ["any"]
+
+[tool.setuptools.dynamic]
+version = {attr = "tno.mpc.communication.__version__"}
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+"tno.mpc.communication" = ["test/tls_certs/*"]
+
