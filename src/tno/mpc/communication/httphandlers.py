@@ -8,20 +8,20 @@ import asyncio
 import functools
 import logging
 import ssl
-import sys
 from asyncio import Future, Transport
-from typing import Any, Awaitable, Callable, cast, overload
+from typing import Any, Awaitable, Callable, Protocol, cast, overload
 
-from aiohttp import ClientSession, ClientTimeout, web
+from aiohttp import (
+    ClientConnectorCertificateError,
+    ClientConnectorSSLError,
+    ClientSession,
+    ClientSSLError,
+    ClientTimeout,
+    web,
+)
 
 from .functions import init
 from .serialization import DEFAULT_PACK_OPTION, Serialization
-
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    from typing_extensions import Protocol
-
 
 logger = init(__name__, logger_level=logging.INFO)
 
@@ -130,8 +130,8 @@ class HTTPClient:
         """
         Shutdown HTTP Client. Closes open HTTP session.
         """
-        if self.session and not self.session.closed:
-            await self.session.close()
+        if (session := self.session) and not session.closed:
+            await session.close()
             logger.info(
                 f"Client {self.addr}:{self.port} shutdown\nTotal bytes sent: {self.total_bytes_sent}\nTotal messages sent: {self.msg_send_counter}"
             )
@@ -181,8 +181,8 @@ class HTTPClient:
         num_retries: int = -1,
     ) -> None:
         """
-        Sends a POST request to containing this data to this client.
-        If sending of message fails and retry_delay > 0 then retry after retry_delay seconds
+        Sends a POST request containing the provided data to this client.
+        If sending of message fails and retry_delay > 0 then retry after retry_delay seconds.
 
         :param data: the data to send
         :param retry_delay: number of seconds to wait before retrying after failure
@@ -206,6 +206,12 @@ class HTTPClient:
                 self.total_bytes_sent += len(data)
 
                 logger.debug(f"Response: {response_message}")
+        except (
+            ClientConnectorCertificateError,
+            ClientConnectorSSLError,
+            ClientSSLError,
+        ):
+            raise
         except Exception:
             logger.exception("Message not received.")
             if retry_delay and num_retries != 0:
@@ -237,12 +243,12 @@ class HTTPClient:
         msg_id = HTTPClient._prefix_msg_id(msg_id, self.msg_prefix)
         self.msg_recv_counter += 1
 
-        data = self.buffer.pop(msg_id, None)
-        if data is None:
-            fut: Future[dict[str, Any]]
-            fut = self.buffer[msg_id] = Future()
-            return fut
-        return data
+        if (data := self.buffer.pop(msg_id, None)) is not None:
+            return data
+
+        fut: Future[dict[str, Any]]
+        fut = self.buffer[msg_id] = Future()
+        return fut
 
     async def _create_client_session(self, cookies: dict[str, str]) -> None:
         """
@@ -314,12 +320,12 @@ class HTTPServer:
         """
         Shutdown HTTP Server.
         """
+        if (task := self.server_task) and not task.cancelled():
+            logger.info("HTTPServer: Shutting down server task")
+            task.cancel()
         if self.site:
             logger.debug("HTTPServer: Shutting down site")
             await self.site.stop()
-        if self.server_task and not self.server_task.cancelled():
-            logger.info("HTTPServer: Shutting down server task")
-            self.server_task.cancel()
         logger.info(
             f"Server {self.addr}:{self.port} shutdown\nTotal bytes received: {self.total_bytes_recv}\nTotal messages received: {self.msg_recv_counter}"
         )

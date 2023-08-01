@@ -6,8 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "tno.mpc.communication"
 description = "MPC Communication module"
 readme = "README.md"
-authors = [{name = "TNO MPC Lab", email = "mpclab@tno.nl"}]
-maintainers = [{name = "TNO MPC Lab", email = "mpclab@tno.nl"}]
+authors = [{name = "TNO PET Lab", email = "petlab@tno.nl"}]
+maintainers = [{name = "TNO PET Lab", email = "petlab@tno.nl"}]
 keywords = [
     "TNO",
     "MPC",
@@ -25,25 +25,24 @@ classifiers = [
     "Typing :: Typed",
     "Topic :: Security :: Cryptography",
 ]
-urls = {Homepage = "https://mpc.tno.nl/", Documentation = "https://docs.mpc.tno.nl/communication/4.5.0", Source = "https://github.com/TNO-MPC/communication"}
-dynamic = ["version"]
-requires-python = ">=3.7"
+urls = {Homepage = "https://pet.tno.nl/", Documentation = "https://docs.pet.tno.nl/mpc/communication/4.8.1", Source = "https://github.com/TNO-MPC/communication"}
+dynamic = ["entry-points", "version"]
+requires-python = ">=3.8"
 dependencies = [
     "aiohttp",
     "mypy_extensions",
     "ormsgpack>=1.1.0",
-    "typing_extensions~=4.0; python_version<'3.8'",
 ]
 
 [project.optional-dependencies]
-bitarray = [
-    "bitarray",
-]
 gmpy = [
     "tno.mpc.encryption_schemes.utils[gmpy]",
 ]
 gmpy2 = [
     "tno.mpc.encryption_schemes.utils[gmpy]",
+]
+bitarray = [
+    "bitarray",
 ]
 numpy = [
     "numpy",
@@ -60,6 +59,7 @@ tests = [
     "pandas-stubs",
     "pytest",
     "pytest-asyncio",
+    "pytest-timeout",
     "typeguard",
 ]
 
@@ -67,6 +67,7 @@ tests = [
 platforms = ["any"]
 
 [tool.setuptools.dynamic]
+entry-points = {file = "entry_points.txt"}
 version = {attr = "tno.mpc.communication.__version__"}
 
 [tool.setuptools.package-data]

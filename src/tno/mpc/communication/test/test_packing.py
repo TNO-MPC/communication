@@ -3,10 +3,13 @@ This module tests packing and unpacking of objects
 (serialization/deserialization)
 """
 
+from __future__ import annotations
+
 import copy
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union, cast
+from typing import Any, Callable, TypeVar, cast
 
 import bitarray
 import numpy as np
@@ -22,6 +25,7 @@ from tno.mpc.communication import (
     SupportsSerialization,
 )
 from tno.mpc.communication.httphandlers import HTTPClient
+from tno.mpc.communication.serialization import DEFAULT_PACK_OPTION
 
 TypePlaceholder = TypeVar("TypePlaceholder")
 
@@ -32,8 +36,8 @@ def pack_unpack_test(
     == b,
     expect: bool = True,
     use_pickle: bool = False,
-    serial_option: Optional[int] = None,
-    deserial_option: Optional[int] = None,
+    serial_option: int | None = DEFAULT_PACK_OPTION,
+    deserial_option: int | None = None,
     **kwargs: Any,
 ) -> None:
     r"""
@@ -116,7 +120,7 @@ def test_int_serialization_fail() -> None:
     Tests packing and unpacking of Python ints
     """
     with pytest.raises(TypeError):
-        pack_unpack_test(2**2048, serial_options=None)
+        pack_unpack_test(2**2048, serial_option=None)
 
 
 def test_float_serialization() -> None:
@@ -164,7 +168,7 @@ def test_empty_list() -> None:
     """
     Tests packing and unpacking of empty lists
     """
-    list_: List[None] = []
+    list_: list[None] = []
     pack_unpack_test(list_)
 
 
@@ -261,7 +265,7 @@ def test_empty_dict() -> None:
     """
     Tests packing and unpacking of empty dictionary
     """
-    dict_: Dict[Any, Any] = {}
+    dict_: dict[Any, Any] = {}
     pack_unpack_test(dict_)
 
 
@@ -339,16 +343,16 @@ def test_empty_series_serialization() -> None:
     """
     Tests packing and unpacking of an empty pandas series
     """
-    dataframe = pd.Series(dtype=object)
-    pack_unpack_test(dataframe, lambda df1, df2: df1.equals(df2))
+    series: pd.Series[Any] = pd.Series(dtype=object)
+    pack_unpack_test(series, lambda df1, df2: df1.equals(df2))
 
 
 def test_series_serialization() -> None:
     """
     Tests packing and unpacking of a pandas series
     """
-    dataframe = pd.Series([1, 2, 3], index=["a", "b", "c"])
-    pack_unpack_test(dataframe, lambda df1, df2: df1.equals(df2))
+    series: pd.Series[Any] = pd.Series([1, 2, 3], index=["a", "b", "c"])
+    pack_unpack_test(series, lambda df1, df2: df1.equals(df2))
 
 
 def test_empty_dataframe_serialization() -> None:
@@ -498,7 +502,7 @@ class ClassWrongSignature(SupportsSerialization):
         return self.value
 
     @staticmethod
-    def deserialize(value: int, **_kwargs: Any) -> "ClassWrongSignature":  # type: ignore[override]  # pylint: disable=arguments-renamed
+    def deserialize(value: int, **_kwargs: Any) -> ClassWrongSignature:  # type: ignore[override]  # pylint: disable=arguments-renamed
         r"""
         Deserialization method
 
@@ -561,7 +565,7 @@ class ClassMismatchType(SupportsSerialization):
         """
         self.value = value
 
-    def serialize(self, **_kwargs: Any) -> Dict[str, int]:
+    def serialize(self, **_kwargs: Any) -> dict[str, int]:
         r"""
         Serialization method
 
@@ -571,7 +575,7 @@ class ClassMismatchType(SupportsSerialization):
         return {"value": self.value}
 
     @staticmethod
-    def deserialize(obj: Any, **_kwargs: Any) -> "ClassMismatchType":
+    def deserialize(obj: Any, **_kwargs: Any) -> ClassMismatchType:
         r"""
         Deserialization method
 
@@ -595,7 +599,7 @@ class ClassCorrect(SupportsSerialization):
         """
         self.value = value
 
-    def serialize(self, **_kwargs: Any) -> Dict[str, int]:
+    def serialize(self, **_kwargs: Any) -> dict[str, int]:
         r"""
         Serialization method
 
@@ -605,7 +609,7 @@ class ClassCorrect(SupportsSerialization):
         return {"value": self.value}
 
     @staticmethod
-    def deserialize(obj: Dict[str, int], **_kwargs: Any) -> "ClassCorrect":
+    def deserialize(obj: dict[str, int], **_kwargs: Any) -> ClassCorrect:
         r"""
         Deserialization method
 
@@ -629,7 +633,7 @@ class ClassCorrect2:
         """
         self.value = value
 
-    def serialize(self, **_kwargs: "Any") -> "dict":  # type: ignore[type-arg]
+    def serialize(self, **_kwargs: Any) -> dict:  # type: ignore[type-arg]
         r"""
         Serialization method
 
@@ -639,7 +643,7 @@ class ClassCorrect2:
         return {"value": self.value}
 
     @staticmethod
-    def deserialize(obj: "dict", **_kwargs: "Any") -> "ClassCorrect2":  # type: ignore[type-arg]
+    def deserialize(obj: dict, **_kwargs: Any) -> ClassCorrect2:  # type: ignore[type-arg]
         r"""
         Deserialization method
 
@@ -655,7 +659,7 @@ class ClassCorrect3:
     Class that implements serialization logic correctly
     """
 
-    def __init__(self, values: List[int], name: str) -> None:
+    def __init__(self, values: list[int], name: str) -> None:
         """
         Initialization of class
 
@@ -665,7 +669,7 @@ class ClassCorrect3:
         self.values = values
         self.name = name
 
-    def serialize(self, **_kwargs: "Any") -> Union[bytes, Dict[str, bytes]]:
+    def serialize(self, **_kwargs: Any) -> bytes | dict[str, bytes]:
         r"""
         Serialization method
 
@@ -681,9 +685,7 @@ class ClassCorrect3:
         )
 
     @staticmethod
-    def deserialize(
-        obj: Union[bytes, Dict[str, bytes]], **_kwargs: "Any"
-    ) -> "ClassCorrect3":
+    def deserialize(obj: bytes | dict[str, bytes], **_kwargs: Any) -> ClassCorrect3:
         r"""
         Deserialization method
 
@@ -700,7 +702,7 @@ class ClassNoKwargs:
     Class that implements correct serialization logic but doesn't use optional keyword arguments.
     """
 
-    def __init__(self, values: List[int], name: str) -> None:
+    def __init__(self, values: list[int], name: str) -> None:
         """
         Initialization of class
 
@@ -710,7 +712,7 @@ class ClassNoKwargs:
         self.values = values
         self.name = name
 
-    def serialize(self) -> Dict[str, Any]:
+    def serialize(self) -> dict[str, Any]:
         """
         Serialization method
 
@@ -722,7 +724,7 @@ class ClassNoKwargs:
         }
 
     @staticmethod
-    def deserialize(obj: Dict[str, Any]) -> "ClassNoKwargs":
+    def deserialize(obj: dict[str, Any]) -> ClassNoKwargs:
         """
         Deserialization method
 
@@ -737,23 +739,23 @@ class ClassCorrectKwargs(SupportsSerialization):
     Class that implements correct serialization logic making use of additional keyword arguments.
     """
 
-    origin: List[Union[str, HTTPClient]] = []
-    destination: List[Union[str, HTTPClient]] = []
+    origin: list[str | HTTPClient] = []
+    destination: list[str | HTTPClient] = []
 
     def __init__(
-        self, values: List[int], name: str
+        self, values: list[int], name: str
     ):  # pylint: disable=super-init-not-called
         self.values = values
         self.name = name
 
     def serialize(  # type: ignore[override]  # pylint: disable=arguments-differ
-        self, *, destination: Union[str, HTTPClient], **kwargs: Any
-    ) -> Dict[str, Any]:
+        self, *, destination: str | HTTPClient, **_kwargs: Any
+    ) -> dict[str, Any]:
         r"""
         Serialization method
 
         :param destination: Receiver of the message.
-        :param \**kwargs: optional extra keyword arguments
+        :param \**_kwargs: optional extra keyword arguments
         :return: serialized object
         """
         self.destination.append(destination)
@@ -764,17 +766,17 @@ class ClassCorrectKwargs(SupportsSerialization):
 
     @staticmethod
     def deserialize(  # type: ignore[override]  # pylint: disable=arguments-differ
-        obj: Dict[str, Any],
+        obj: dict[str, Any],
         *,
-        origin: Union[str, HTTPClient],
-        **kwargs: Any,
-    ) -> "ClassCorrectKwargs":
+        origin: str | HTTPClient,
+        **_kwargs: Any,
+    ) -> ClassCorrectKwargs:
         r"""
         Deserialization method
 
         :param obj: object to deserialize
         :param origin: Sender of the message.
-        :param \**kwargs: optional extra keyword arguments
+        :param \**_kwargs: optional extra keyword arguments
         :return: deserializes object
         """
         ClassCorrectKwargs.origin.append(origin)
@@ -786,11 +788,11 @@ class ClassCorrectKwargs2:
     Class that implements correct serialization logic making use of additional keyword arguments.
     """
 
-    def __init__(self, values: List[int], other: ClassCorrectKwargs):
+    def __init__(self, values: list[int], other: ClassCorrectKwargs):
         self.values = values
         self.other = other
 
-    def serialize(self, **_kwargs: Any) -> Dict[str, Any]:
+    def serialize(self, **_kwargs: Any) -> dict[str, Any]:
         r"""
         Serialization method
 
@@ -803,7 +805,41 @@ class ClassCorrectKwargs2:
         }
 
     @staticmethod
-    def deserialize(obj: Dict[str, Any], **_kwargs: Any) -> "ClassCorrectKwargs2":
+    def deserialize(obj: dict[str, Any], **_kwargs: Any) -> ClassCorrectKwargs2:
+        r"""
+        Deserialization method
+
+        :param obj: object to deserialize
+        :param \**_kwargs: optional extra keyword arguments
+        :return: deserialized object
+        """
+        return ClassCorrectKwargs2(obj["values"], obj["other"])
+
+
+class NestedClassCorrect(SupportsSerialization):
+    """
+    Class that implements serialization logic correctly
+    """
+
+    def __init__(self, value: int) -> None:
+        """
+        Initialization of class
+
+        :param value: value attribute of class
+        """
+        self.instance = ClassCorrect(value)
+
+    def serialize(self, **_kwargs: Any) -> dict[str, ClassCorrect]:
+        r"""
+        Serialization method
+
+        :param \**_kwargs: optional extra keyword arguments
+        :return: serialized object
+        """
+        return {"instance": self.instance}
+
+    @staticmethod
+    def deserialize(obj: dict[str, ClassCorrect], **_kwargs: Any) -> NestedClassCorrect:
         r"""
         Deserialization method
 
@@ -811,12 +847,41 @@ class ClassCorrectKwargs2:
         :param \**_kwargs: optional extra keyword arguments
         :return: deserializes object
         """
-        return ClassCorrectKwargs2(obj["values"], obj["other"])
+        return NestedClassCorrect(obj["instance"].value)
+
+
+@dataclass
+class MyDataClass:
+    """
+    Dataclass with custom serialization logic
+    """
+
+    attribute: int
+
+    def serialize(self, **_kwargs: Any) -> dict[str, int]:
+        r"""
+        Serialization method
+
+        :param \**_kwargs: optional extra keyword arguments
+        :return: serialized object
+        """
+        return asdict(self)
+
+    @staticmethod
+    def deserialize(obj: dict[str, int], **_kwargs: Any) -> MyDataClass:
+        r"""
+        Deserialization method
+
+        :param obj: object to deserialize
+        :param \**_kwargs: optional extra keyword arguments
+        :return: deserialized object
+        """
+        return MyDataClass(**obj)
 
 
 @pytest.mark.parametrize("correct_class", (ClassCorrect, ClassCorrect2))
 def test_custom_serialization_correct(
-    correct_class: Type[Union[ClassCorrect, ClassCorrect2]]
+    correct_class: type[ClassCorrect | ClassCorrect2],
 ) -> None:
     """
     Tests correctly implemented serialization logic
@@ -837,8 +902,8 @@ def test_custom_serialization_correct(
     ),
 )
 def test_custom_serialization_correct2(
-    correct_class: Type[Union[ClassCorrect, ClassCorrect2]],
-    correct_class_2: Type[ClassCorrect3],
+    correct_class: type[ClassCorrect | ClassCorrect2],
+    correct_class_2: type[ClassCorrect3],
 ) -> None:
     """
     Tests correctly implemented serialization logic
@@ -901,6 +966,17 @@ def test_custom_serialization_correct_kwargs2() -> None:
     ClassCorrectKwargs.destination = []
 
 
+def test_dataclass_serialization() -> None:
+    """
+    Tests packing and unpacking of dataclasses with custom serialization logic
+    """
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(MyDataClass)
+    my_dataclass = MyDataClass(1)
+
+    pack_unpack_test(my_dataclass)
+
+
 def test_ndarray_custom_logic_elements_serialization() -> None:
     """
     Tests packing and unpacking of a numpy array with custom-serialized elements
@@ -933,5 +1009,122 @@ def test_ndarray_custom_logic_elements_serialization() -> None:
         array_,
         compare,
         serial_option=ormsgpack.OPT_SERIALIZE_NUMPY,
+        use_pickle=False,
+    )
+
+
+def test_series_custom_logic_elements_serialization() -> None:
+    """
+    Tests packing and unpacking of a pandas series with custom-serialized elements
+    """
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(ClassCorrect)
+    series = pd.Series([ClassCorrect(1)])
+
+    def compare(series1: pd.Series[Any], series2: pd.Series[Any]) -> bool:
+        """
+        Check two pandas series that contain a single ClassCorrect element for equality
+
+        :param series1: first series
+        :param series2: second series
+        :return: True if the ClassCorrect elements have the same value
+        """
+
+        return (
+            cast(ClassCorrect, series1[0]).value == cast(ClassCorrect, series2[0]).value
+        )
+
+    pack_unpack_test(
+        series,
+        compare,
+        use_pickle=False,
+    )
+
+
+def test_dataframe_custom_logic_elements_serialization() -> None:
+    """
+    Tests packing and unpacking of a pandas dataframe with custom-serialized elements
+    """
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(ClassCorrect)
+    dataframe = pd.DataFrame({"col1": [ClassCorrect(1)]})
+
+    def compare(df1: pd.DataFrame, df2: pd.DataFrame) -> bool:
+        """
+        Check two pandas dataframes that contain a single ClassCorrect element for equality
+
+        :param df1: first dataframe
+        :param df2: second dataframe
+        :return: True if the ClassCorrect elements have the same value
+        """
+
+        return (
+            cast(ClassCorrect, df1.iloc[0, 0]).value
+            == cast(ClassCorrect, df2.iloc[0, 0]).value
+        )
+
+    pack_unpack_test(
+        dataframe,
+        compare,
+        use_pickle=False,
+    )
+
+
+def test_series_nested_custom_logic_elements_serialization() -> None:
+    """
+    Tests packing and unpacking of a pandas series with nested custom-serialized elements
+    """
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(ClassCorrect)
+    Serialization.register_class(NestedClassCorrect)
+    series = pd.Series([NestedClassCorrect(1)])
+
+    def compare(series1: pd.Series[Any], series2: pd.Series[Any]) -> bool:
+        """
+        Check two pandas series that contain a single NestedClassCorrect element for equality
+
+        :param series1: first series
+        :param series2: second series
+        :return: True if the NestedClassCorrect elements have the same value
+        """
+
+        return (
+            cast(NestedClassCorrect, series1[0]).instance.value
+            == cast(NestedClassCorrect, series2[0]).instance.value
+        )
+
+    pack_unpack_test(
+        series,
+        compare,
+        use_pickle=False,
+    )
+
+
+def test_dataframe_nested_custom_logic_elements_serialization() -> None:
+    """
+    Tests packing and unpacking of a pandas dataframe with nested custom-serialized elements
+    """
+    Serialization.clear_serialization_logic()
+    Serialization.register_class(ClassCorrect)
+    Serialization.register_class(NestedClassCorrect)
+    dataframe = pd.DataFrame({"col1": [NestedClassCorrect(1)]})
+
+    def compare(df1: pd.DataFrame, df2: pd.DataFrame) -> bool:
+        """
+        Check two pandas dataframes that contain a single NestedClassCorrect element for equality
+
+        :param df1: first dataframe
+        :param df2: second dataframe
+        :return: True if the NestedClassCorrect elements have the same value
+        """
+
+        return (
+            cast(NestedClassCorrect, df1.iloc[0, 0]).instance.value
+            == cast(NestedClassCorrect, df2.iloc[0, 0]).instance.value
+        )
+
+    pack_unpack_test(
+        dataframe,
+        compare,
         use_pickle=False,
     )

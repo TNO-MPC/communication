@@ -11,7 +11,8 @@ import socket
 import ssl
 import warnings
 from asyncio import Future
-from typing import Any, Iterable, cast
+from pathlib import Path
+from typing import Any, Iterable, Union, cast
 
 from aiohttp import ClientTimeout
 
@@ -29,9 +30,9 @@ class Pool:
 
     def __init__(
         self,
-        key: str | None = None,
-        cert: str | None = None,
-        ca_cert: str | None = None,
+        key: Path | str | None = None,
+        cert: Path | str | None = None,
+        ca_cert: Path | str | None = None,
         timeout: ClientTimeout = ClientTimeout(total=300),
         max_retries: int = -1,
     ):
@@ -103,7 +104,7 @@ class Pool:
         name: str,
         addr: str,
         port: int | None = None,
-        cert: str | None = None,
+        cert: Path | str | None = None,
         **cert_kwargs: Any,
     ) -> None:
         r"""
@@ -122,7 +123,6 @@ class Pool:
         port = self.get_port(ssl_ctx) if port is None else port
         client = HTTPClient(self, addr, port, ssl_ctx)
         self.pool_handlers[name] = client
-        self.handlers_lookup[f"{socket.gethostbyname(addr)}:{port}"] = client
         if cert:
             try:
                 import OpenSSL.crypto  # pylint: disable=import-outside-toplevel
@@ -145,9 +145,9 @@ class Pool:
 
     @staticmethod
     def create_ssl_context(
-        key: str | None,
-        cert: str | None,
-        ca_cert: str | None = None,
+        key: Path | str | None,
+        cert: Path | str | None,
+        ca_cert: Path | str | None = None,
         server: bool = False,
     ) -> ssl.SSLContext | None:
         """
@@ -166,6 +166,9 @@ class Pool:
         """
         if ca_cert is None:
             return None
+
+        key = cast(Union[Path, str], key)
+        cert = cast(Union[Path, str], cert)
 
         if server:
             purpose = ssl.Purpose.CLIENT_AUTH
@@ -196,7 +199,7 @@ class Pool:
     def _preprocess_broadcast(
         self,
         msg_id: str,
-        handler_names: list[str] | None = None,
+        handler_names: Iterable[str] | None = None,
         timeout: ClientTimeout | None = None,
         max_retries: int | None = None,
     ) -> tuple[ClientTimeout, int, list[HTTPClient], bool, int, str]:
@@ -251,7 +254,7 @@ class Pool:
         self,
         message: Any,
         msg_id: str,
-        handler_names: list[str] | None = None,
+        handler_names: Iterable[str] | None = None,
         timeout: ClientTimeout | None = None,
         max_retries: int | None = None,
     ) -> None:
@@ -293,7 +296,7 @@ class Pool:
         self,
         message: Any,
         msg_id: str,
-        handler_names: list[str] | None = None,
+        handler_names: Iterable[str] | None = None,
         timeout: ClientTimeout | None = None,
         max_retries: int | None = None,
     ) -> None:
@@ -428,14 +431,19 @@ class Pool:
         self,
         handler_names: Iterable[str] | None = None,
         msg_id: str | None = None,
+        timeout: float | None = None,
     ) -> tuple[tuple[str, Any]]:
         """
         Method that receives one message for each party in an asynchronous fashion.
 
-        :param handler_names: List of pool handler names to receive a message from. If None, will receive one message
-             from all parties.
+        :param handler_names: List of pool handler names to receive a message from. If None, will
+            receive one message from all parties.
         :param msg_id: an optional string identifying the message to collect
-        :return: Tuple of tuples containing first the party name and second the corresponding message.
+        :param timeout: maximum time in seconds to wait for the message to be received. Waits
+            indefinitely if None.
+        :raise TimeoutError: message was not received before timeout
+        :return: Tuple of tuples containing first the party name and second the corresponding
+            message.
         """
         if handler_names is None:
             handler_names = self.pool_handlers.keys()
@@ -447,21 +455,29 @@ class Pool:
             :param handler: Pool handler name to receive a message from.
             :return: Tuple containing first the party name and second the received message.
             """
-            return handler, await self.recv(handler, msg_id)
+            return handler, await self.recv(handler, msg_id, timeout=timeout)
 
         return await asyncio.gather(*(result_tuple(handler_name) for handler_name in handler_names))  # type: ignore[no-any-return]
 
-    async def recv(self, handler_name: str, msg_id: str | None = None) -> Any:
+    async def recv(
+        self,
+        handler_name: str,
+        msg_id: str | None = None,
+        timeout: float | None = None,
+    ) -> Any:
         """
         Receive a message asynchronously from a peer. Ensures result.
 
         :param handler_name: the name of the pool handler to receive a message from
         :param msg_id: an optional string identifying the message to collect
+        :param timeout: maximum time in seconds to wait for the message to be received. Waits
+            indefinitely if None.
+        :raise TimeoutError: message was not received before timeout
         :return: the message from peer.
         """
         result = self.arecv(handler_name, msg_id)
         if asyncio.isfuture(result):
-            await result
+            await asyncio.wait_for(result, timeout=timeout)
             return result.result()
         return result
 
@@ -483,10 +499,10 @@ class Pool:
         msg_send_counter = 0
         total_bytes_recv = 0
         msg_recv_counter = 0
-        if self.http_server is not None:
-            await self.http_server.shutdown()
-            msg_recv_counter = self.http_server.msg_recv_counter
-            total_bytes_recv = self.http_server.total_bytes_recv
+        if (server := self.http_server) is not None:
+            await server.shutdown()
+            msg_recv_counter = server.msg_recv_counter
+            total_bytes_recv = server.total_bytes_recv
         for handler in self.pool_handlers.values():
             await handler.shutdown()
             total_bytes_sent += handler.total_bytes_sent

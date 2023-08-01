@@ -7,7 +7,7 @@ import datetime
 import io
 import sys
 import warnings
-from typing import Any, Callable, Hashable
+from typing import Any, Callable, Dict, cast
 
 from tno.mpc.communication.functions import redirect_importerror_to_optionalimporterror
 from tno.mpc.communication.serialization import Serialization
@@ -39,7 +39,7 @@ TEMP_COLUMN_NAME = "TNO_MPC_COMMUNICATION_TEMPNAME"
 
 def pandas_serialize_dataframe(  # pylint: disable=missing-raises-doc
     obj: DataFrame, use_pickle: bool, **kwargs: Any
-) -> bytes | dict[Hashable, Any]:
+) -> bytes | dict[str, Any]:
     r"""
     Function for serializing pandas dataframes
 
@@ -89,11 +89,11 @@ def pandas_serialize_dataframe(  # pylint: disable=missing-raises-doc
         else:
             raise exc
     # Fall-back to dictionary serialization
-    return obj.to_dict()
+    return cast(Dict[str, Any], obj.to_dict(orient="split"))
 
 
 def pandas_deserialize_dataframe(
-    obj: bytes | dict[Hashable, Any], use_pickle: bool, **_kwargs: Any
+    obj: bytes | dict[str, Any], use_pickle: bool, **_kwargs: Any
 ) -> DataFrame:
     r"""
     Function for deserializing pandas dataframe
@@ -115,7 +115,7 @@ def pandas_deserialize_dataframe(
                 "tno.mpc.communication[pandas]."
             ) from exc
     else:  # Dataframe is serialized as dictionary
-        dataframe = pd.DataFrame(obj)
+        dataframe = pd.DataFrame(**obj)
     return dataframe.applymap(
         lambda x: Serialization.deserialize(x, use_pickle=use_pickle)
         if isinstance(x, dict) and "type" in x and "data" in x
@@ -123,9 +123,7 @@ def pandas_deserialize_dataframe(
     )
 
 
-def pandas_serialize_series(
-    obj: Series[Any], **_kwargs: Any
-) -> bytes | dict[Hashable, Any]:
+def pandas_serialize_series(obj: Series[Any], **_kwargs: Any) -> bytes | dict[str, Any]:
     r"""
     Function for serializing pandas series
 
@@ -141,7 +139,7 @@ def pandas_serialize_series(
 
 
 def pandas_deserialize_series(
-    obj: bytes | dict[Hashable, Any], **kwargs: Any
+    obj: bytes | dict[str, Any], **kwargs: Any
 ) -> Series:  # type: ignore[type-arg]
     r"""
     Function for deserializing pandas series

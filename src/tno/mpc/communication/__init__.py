@@ -14,17 +14,8 @@ from tno.mpc.communication.serialization import (
     SupportsSerialization as SupportsSerialization,
 )
 
-__version__ = "4.5.0"
+__version__ = "4.8.1"
 
 
 # Register all default (de)serializers
 Serialization.clear_serialization_logic(reload_defaults=True)
-
-
-def init_pool() -> Pool:
-    """
-    Initializes a new Pool object.
-
-    :return: new Pool object.
-    """
-    return Pool()

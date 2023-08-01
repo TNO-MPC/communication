@@ -6,9 +6,17 @@ from __future__ import annotations
 
 import inspect
 import pickle
-import sys
 from functools import partial
-from typing import Any, Callable, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Container,
+    Iterable,
+    Protocol,
+    TypeVar,
+    Union,
+)
 
 import ormsgpack
 from mypy_extensions import Arg, KwArg
@@ -16,12 +24,6 @@ from mypy_extensions import Arg, KwArg
 from tno.mpc.communication import serializer_plugins
 from tno.mpc.communication.exceptions import AnnotationError, RepetitionError
 from tno.mpc.communication.functions import init
-
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    from typing_extensions import Protocol
-
 
 logger = init(__name__)
 
@@ -40,9 +42,10 @@ DorSFunction = TypeVar(
 )
 
 DEFAULT_PACK_OPTION = (
-    ormsgpack.OPT_SERIALIZE_NUMPY
-    | ormsgpack.OPT_PASSTHROUGH_BIG_INT
+    ormsgpack.OPT_PASSTHROUGH_BIG_INT
     | ormsgpack.OPT_PASSTHROUGH_TUPLE
+    | ormsgpack.OPT_PASSTHROUGH_DATACLASS
+    | ormsgpack.OPT_SERIALIZE_NUMPY
 )
 
 
@@ -153,7 +156,7 @@ class Serialization:
     @staticmethod
     def _register_serializer(
         serializer: SerializerFunction,
-        types: tuple[str, ...],
+        types: Collection[str],
         check_annotations: bool = True,
         overwrite: bool = False,
     ) -> None:
@@ -190,7 +193,7 @@ class Serialization:
     @staticmethod
     def _register_deserializer(
         deserializer: DeserializerFunction,
-        types: tuple[str, ...],
+        types: Collection[str],
         check_annotations: bool = True,
         overwrite: bool = False,
     ) -> None:
@@ -230,7 +233,7 @@ class Serialization:
     def _register(
         target_dict: dict[str, DorSFunction],
         d_or_s_function: DorSFunction,
-        types: tuple[str, ...],
+        types: Iterable[str],
         overwrite: bool,
     ) -> None:
         """
@@ -501,7 +504,7 @@ def _validate_signature_has_kwargs(signature: inspect.Signature) -> None:
 
 
 def _validate_provided_return_annotation(
-    signature: inspect.Signature, types: tuple[str, ...]
+    signature: inspect.Signature, types: Container[str]
 ) -> None:
     """
     Validate that the signature agrees with the provided types.

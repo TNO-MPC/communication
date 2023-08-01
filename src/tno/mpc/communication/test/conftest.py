@@ -1,12 +1,18 @@
 """
 Pytest fixtures for tno.mpc.communication.
-"""
 
+This module is not exported as pytest plugin.
+"""
+from __future__ import annotations
+
+from pathlib import Path
 from typing import Iterator
 
 import pytest
 
 from tno.mpc.communication import serialization
+
+TEST_CERTIFICATE_DIR = Path(__file__).parents[0] / "tls_certs"
 
 
 @pytest.fixture(autouse=True)

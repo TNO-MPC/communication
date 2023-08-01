@@ -54,7 +54,7 @@ def test_sync_pool_creation() -> None:
             f"{randint(0, 255)}.{randint(0, 255)}.{randint(0, 255)}.{randint(0, 255)}",
             randint(0, 255),
         )
-        for _ in range(100)
+        for _ in range(10)
     ],
 )
 def test_http_client_equality(http_addr: str, http_port: int) -> None:

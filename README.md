@@ -1,9 +1,9 @@
-# TNO MPC Lab - Communication
+# TNO PET Lab - secure Multi-Party Computation (MPC) - Communication
 
-The TNO MPC lab consists of generic software components, procedures, and
+The TNO PET Lab consists of generic software components, procedures, and
 functionalities developed and maintained on a regular basis to facilitate and
-aid in the development of MPC solutions. The lab is a cross-project initiative
-allowing us to integrate and reuse previously developed MPC functionalities to
+aid in the development of PET solutions. The lab is a cross-project initiative
+allowing us to integrate and reuse previously developed PET functionalities to
 boost the development of new protocols and solutions.
 
 The package tno.mpc.communication is part of the TNO Python Toolbox.
@@ -16,7 +16,7 @@ own risk._
 ## Documentation
 
 Documentation of the tno.mpc.communication package can be found
-[here](https://docs.mpc.tno.nl/communication/4.5.0).
+[here](https://docs.pet.tno.nl/mpc/communication/4.8.1).
 
 ## Install
 
@@ -26,11 +26,20 @@ Easily install the tno.mpc.communication package using pip:
 $ python -m pip install tno.mpc.communication
 ```
 
-If you wish to run the tests you can use:
+Note: The package specifies several optional dependency groups:
 
-```console
-$ python -m pip install 'tno.mpc.communication[tests]'
-```
+- `gmpy`: Adds support for sending various `gmpy2` types
+- `tests`: Includes all optional libraries required to run the full test suite
+- `tls`: Required if SSL is needed
+- `bitarray`: Adds support for sending `bitarray` types
+- `numpy`: Adds support for sending `numpy` types
+- `pandas`: Adds support for sending `pandas` types
+
+See [sending, receiving messages](#sending-receiving-messages) for more
+information on the supported third party types. Optional dependencies can be
+installed by specifying their names in brackets after the package name, e.g.
+when using `pip install`, use `pip install tno.mpc.communication[extra1,extra2]`
+to install the groups `extra1` and `extra2`.
 
 ## Usage
 
@@ -408,3 +417,56 @@ Hello Bob! This is Alice speaking.
 2022-07-07 09:36:20,232 - tno.mpc.communication.httphandlers - INFO - HTTPServer: Shutting down server task
 2022-07-07 09:36:20,256 - tno.mpc.communication.httphandlers - INFO - Server 127.0.0.1:61002 shutdown
 ```
+
+## Test fixtures
+
+The `tno.mpc.communication` package exports several pytest fixtures as pytest
+plugins to facilitate the user in testing with pool objects. The fixtures take
+care of all configuration and clean-up of the pool objects so that you don't
+have to worry about that.
+
+Usage:
+
+```py
+# test_my_module.py
+import pytest
+from typing import Callable
+from tno.mpc.communication import Pool
+
+def test_with_two_pools(http_pool_duo: tuple[Pool, Pool]) -> None:
+    sender, receiver = http_pool_duo
+    # ... your code
+
+def test_with_three_pools(http_pool_trio: tuple[Pool, Pool, Pool]) -> None:
+    alice, bob, charlie = http_pool_trio
+    # ... your code
+
+@pytest.mark.parameterize("n_players", (2, 3, 4))
+def test_with_variable_pools(
+    n_players: int,
+    http_pool_group_factory: Callable[[int], tuple[Pool, ...]],
+) -> None:
+    pools = http_pool_group_factory(n_players)
+    # ... your code
+```
+
+### Fixture scope
+
+The scope of the fixtures can be set dynamically through the
+`--fixture-pool-scope`
+[option to pytest](https://docs.pytest.org/en/7.1.x/reference/reference.html#configuration-options).
+_Note that this will also change the scope of the global `event_loop` fixture
+that is provided by `pytest-asyncio`._ By default, in line with
+`pytest_asyncio`, the scope of all our fixtures is `"function"`. We advise to
+configure a larger scope (e.g. `"session"`, `"package"` or `"module"`) when
+possible to reduce test set-up and teardown time.
+
+Our fixtures pass `True` to the `port_reuse` argument of `aiohttp.web.TCPSite`.
+Their
+[documentation](https://docs.aiohttp.org/en/stable/web_reference.html?highlight=reuse_port#aiohttp.web.TCPSite)
+states that this option is not supported on Windows (outside of WSL). If you
+experience any issues, please disable the plugin by adding
+`-p no:pytest_tno.tno.mpc.communication.pytest_pool_fixtures` to your pytest
+configuration. Note that without `port_reuse` the tests may crash, as the test
+may try to bind to ports which may not have been freed by the operating system.
+For more reliable testing, run the tests on a WSL / Linux platform.

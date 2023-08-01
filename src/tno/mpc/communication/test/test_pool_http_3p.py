@@ -1,25 +1,23 @@
 """
 This module tests the communication between three communication pools.
 """
+from __future__ import annotations
+
 import asyncio
-from typing import Any, List, Optional, Tuple
+from typing import Any, Iterable, Sequence
 
 import pytest
+from aiohttp import ClientTimeout
 
 from tno.mpc.communication import Pool
-from tno.mpc.communication.test import (  # pylint: disable=unused-import
-    event_loop,
-    fixture_pool_http_3p,
-)
 
 
-@pytest.mark.asyncio
 async def send_message(
-    pools: Tuple[Pool, ...],
+    pools: Sequence[Pool],
     sender: int,
     receiver: int,
     message: Any,
-    msg_id: Optional[str] = None,
+    msg_id: str | None = None,
 ) -> None:
     """
     Send a message
@@ -30,14 +28,19 @@ async def send_message(
     :param message: the message to send
     :param msg_id: the message id to use
     """
-    await pools[sender].send(f"local{receiver}", message, msg_id)
+    await pools[sender].send(
+        f"local{receiver}",
+        message,
+        msg_id,
+        timeout=ClientTimeout(total=2),
+        max_retries=2,
+    )
 
 
-@pytest.mark.asyncio
 async def broadcast_message(
-    pools: Tuple[Pool, ...],
+    pools: Sequence[Pool],
     sender: int,
-    receivers: List[int],
+    receivers: Iterable[int],
     message: Any,
     msg_id: str,
 ) -> None:
@@ -55,13 +58,12 @@ async def broadcast_message(
     )
 
 
-@pytest.mark.asyncio
 async def assert_recv_message(
-    pools: Tuple[Pool, ...],
+    pools: Sequence[Pool],
     sender: int,
     receiver: int,
     message: Any,
-    msg_id: Optional[str] = None,
+    msg_id: str | None = None,
 ) -> None:
     """
     Receives a message and validates whether it is in line with the expected message
@@ -76,13 +78,12 @@ async def assert_recv_message(
     assert res == message
 
 
-@pytest.mark.asyncio
 async def assert_send_recv_all_message(
-    pools: Tuple[Pool, ...],
+    pools: Sequence[Pool],
     receiver: int,
-    senders: List[int],
+    senders: Iterable[int],
     message: Any,
-    msg_id: Optional[str] = None,
+    msg_id: str | None = None,
 ) -> None:
     """
     Sends a message to one party from each other party and validate whether it is received correctly.
@@ -107,13 +108,12 @@ async def assert_send_recv_all_message(
     assert sorted(received_from) == sorted(senders)
 
 
-@pytest.mark.asyncio
 async def assert_send_message(
-    pools: Tuple[Pool, ...],
+    pools: Sequence[Pool],
     sender: int,
     receiver: int,
     message: Any,
-    msg_id: Optional[str] = None,
+    msg_id: str | None = None,
 ) -> None:
     """
     Sends a message and validates whether it is received correctly
@@ -128,11 +128,10 @@ async def assert_send_message(
     await assert_recv_message(pools, sender, receiver, message, msg_id)
 
 
-@pytest.mark.asyncio
 async def assert_broadcast_message(
-    pools: Tuple[Pool, ...],
+    pools: Sequence[Pool],
     sender: int,
-    receivers: List[int],
+    receivers: Iterable[int],
     message: Any,
     msg_id: str,
 ) -> None:
@@ -155,213 +154,215 @@ async def assert_broadcast_message(
 
 
 @pytest.mark.asyncio
-async def test_http_3p_server(pool_http_3p: Tuple[Pool, Pool, Pool]) -> None:
+async def test_http_3p_server(http_pool_trio: tuple[Pool, Pool, Pool]) -> None:
     """
     Tests sending and receiving of multiple messages between three communication pools
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
     await asyncio.gather(
         *(
-            assert_send_message(pool_http_3p, 0, 1, "Hello1!"),
-            assert_send_message(pool_http_3p, 0, 2, "Hello2!"),
-            assert_send_message(pool_http_3p, 1, 0, "Hello3!"),
-            assert_send_message(pool_http_3p, 1, 2, "Hello4!"),
-            assert_send_message(pool_http_3p, 2, 0, "Hello5!"),
-            assert_send_message(pool_http_3p, 2, 1, "Hello6!"),
+            assert_send_message(http_pool_trio, 0, 1, "Hello1!"),
+            assert_send_message(http_pool_trio, 0, 2, "Hello2!"),
+            assert_send_message(http_pool_trio, 1, 0, "Hello3!"),
+            assert_send_message(http_pool_trio, 1, 2, "Hello4!"),
+            assert_send_message(http_pool_trio, 2, 0, "Hello5!"),
+            assert_send_message(http_pool_trio, 2, 1, "Hello6!"),
         )
     )
 
 
 @pytest.mark.asyncio
-async def test_http_3p_server_broadcast(pool_http_3p: Tuple[Pool, Pool, Pool]) -> None:
+async def test_http_3p_server_broadcast(
+    http_pool_trio: tuple[Pool, Pool, Pool]
+) -> None:
     """
     Tests sending and receiving of multiple broadcast messages between three communication pools
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
     await asyncio.gather(
         *(
-            assert_broadcast_message(pool_http_3p, 0, [1, 2], "Hello1!", "id1"),
-            assert_broadcast_message(pool_http_3p, 1, [0, 2], "Hello2!", "id2"),
-            assert_broadcast_message(pool_http_3p, 2, [0, 1], "Hello3!", "id3"),
-            assert_broadcast_message(pool_http_3p, 0, [1], "Hello1!", "id4"),
-            assert_broadcast_message(pool_http_3p, 1, [2], "Hello2!", "id5"),
-            assert_broadcast_message(pool_http_3p, 2, [0], "Hello3!", "id6"),
+            assert_broadcast_message(http_pool_trio, 0, [1, 2], "Hello1!", "id1"),
+            assert_broadcast_message(http_pool_trio, 1, [0, 2], "Hello2!", "id2"),
+            assert_broadcast_message(http_pool_trio, 2, [0, 1], "Hello3!", "id3"),
+            assert_broadcast_message(http_pool_trio, 0, [1], "Hello1!", "id4"),
+            assert_broadcast_message(http_pool_trio, 1, [2], "Hello2!", "id5"),
+            assert_broadcast_message(http_pool_trio, 2, [0], "Hello3!", "id6"),
         )
     )
 
 
 @pytest.mark.asyncio
-async def test_http_3p_server_2(pool_http_3p: Tuple[Pool, Pool, Pool]) -> None:
+async def test_http_3p_server_2(http_pool_trio: tuple[Pool, Pool, Pool]) -> None:
     """
     Tests sending and receiving of multiple messages between three communication pools
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
     await asyncio.gather(
         *(
-            assert_send_message(pool_http_3p, 0, 1, "Hello1!"),
-            assert_send_message(pool_http_3p, 0, 1, "Hello2!"),
-            assert_send_message(pool_http_3p, 0, 1, "Hello1!"),
+            assert_send_message(http_pool_trio, 0, 1, "Hello1!"),
+            assert_send_message(http_pool_trio, 0, 1, "Hello2!"),
+            assert_send_message(http_pool_trio, 0, 1, "Hello1!"),
         )
     )
 
 
 @pytest.mark.asyncio
 async def test_http_3p_server_broadcast_2(
-    pool_http_3p: Tuple[Pool, Pool, Pool]
+    http_pool_trio: tuple[Pool, Pool, Pool]
 ) -> None:
     """
     Tests sending and receiving of multiple broadcast messages between three communication pools
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
     await asyncio.gather(
         *(
-            assert_broadcast_message(pool_http_3p, 0, [1, 2], "Hello1!", "id1"),
-            assert_broadcast_message(pool_http_3p, 0, [1, 2], "Hello2!", "id2"),
-            assert_broadcast_message(pool_http_3p, 0, [1, 2], "Hello3!", "id3"),
-            assert_broadcast_message(pool_http_3p, 0, [1], "Hello1!", "id4"),
-            assert_broadcast_message(pool_http_3p, 0, [2], "Hello2!", "id5"),
+            assert_broadcast_message(http_pool_trio, 0, [1, 2], "Hello1!", "id1"),
+            assert_broadcast_message(http_pool_trio, 0, [1, 2], "Hello2!", "id2"),
+            assert_broadcast_message(http_pool_trio, 0, [1, 2], "Hello3!", "id3"),
+            assert_broadcast_message(http_pool_trio, 0, [1], "Hello1!", "id4"),
+            assert_broadcast_message(http_pool_trio, 0, [2], "Hello2!", "id5"),
         )
     )
 
 
 @pytest.mark.asyncio
-async def test_http_3p_server_3(pool_http_3p: Tuple[Pool, Pool, Pool]) -> None:
+async def test_http_3p_server_3(http_pool_trio: tuple[Pool, Pool, Pool]) -> None:
     """
     Tests sending and receiving of multiple messages between three communication pools
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
     await asyncio.gather(
         *(
-            assert_send_message(pool_http_3p, 0, 1, "Hello1!"),
-            assert_send_message(pool_http_3p, 0, 2, "Hello2!"),
-            assert_send_message(pool_http_3p, 1, 0, "Hello3!"),
-            assert_send_message(pool_http_3p, 1, 2, "Hello4!"),
-            assert_send_message(pool_http_3p, 2, 0, "Hello5!"),
-            assert_send_message(pool_http_3p, 2, 1, "Hello6!"),
-            assert_send_message(pool_http_3p, 0, 1, "Hello7!"),
-            assert_send_message(pool_http_3p, 0, 2, "Hello8!"),
-            assert_send_message(pool_http_3p, 1, 0, "Hello9!"),
-            assert_send_message(pool_http_3p, 1, 2, "Hello10!"),
-            assert_send_message(pool_http_3p, 2, 0, "Hello11!"),
-            assert_send_message(pool_http_3p, 2, 1, "Hello12!"),
+            assert_send_message(http_pool_trio, 0, 1, "Hello1!"),
+            assert_send_message(http_pool_trio, 0, 2, "Hello2!"),
+            assert_send_message(http_pool_trio, 1, 0, "Hello3!"),
+            assert_send_message(http_pool_trio, 1, 2, "Hello4!"),
+            assert_send_message(http_pool_trio, 2, 0, "Hello5!"),
+            assert_send_message(http_pool_trio, 2, 1, "Hello6!"),
+            assert_send_message(http_pool_trio, 0, 1, "Hello7!"),
+            assert_send_message(http_pool_trio, 0, 2, "Hello8!"),
+            assert_send_message(http_pool_trio, 1, 0, "Hello9!"),
+            assert_send_message(http_pool_trio, 1, 2, "Hello10!"),
+            assert_send_message(http_pool_trio, 2, 0, "Hello11!"),
+            assert_send_message(http_pool_trio, 2, 1, "Hello12!"),
         )
     )
 
 
 @pytest.mark.asyncio
-async def test_http_3p_server_msg_id(pool_http_3p: Tuple[Pool, Pool, Pool]) -> None:
+async def test_http_3p_server_msg_id(http_pool_trio: tuple[Pool, Pool, Pool]) -> None:
     """
     Tests sending and receiving of multiple messages between three communication pools with a message id
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
     await asyncio.gather(
         *(
-            assert_send_message(pool_http_3p, 0, 1, "Hello1!", "Msg ID 1"),
-            assert_send_message(pool_http_3p, 0, 1, "Hello2!", "Msg ID 2"),
+            assert_send_message(http_pool_trio, 0, 1, "Hello1!", "Msg ID 1"),
+            assert_send_message(http_pool_trio, 0, 1, "Hello2!", "Msg ID 2"),
         )
     )
 
 
 @pytest.mark.asyncio
 async def test_http_3p_server_mixed_receive(
-    pool_http_3p: Tuple[Pool, Pool, Pool]
+    http_pool_trio: tuple[Pool, Pool, Pool]
 ) -> None:
     """
     Tests sending and receiving of multiple messages of varying types between three communication pools
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
     await asyncio.gather(
         *(
-            send_message(pool_http_3p, 0, 1, "Hello1!"),
-            send_message(pool_http_3p, 2, 1, b"Hello2!"),
-            send_message(pool_http_3p, 0, 1, b"Hello3!"),
-            send_message(pool_http_3p, 2, 1, "Hello4!"),
-            assert_recv_message(pool_http_3p, 2, 1, b"Hello2!"),
-            assert_recv_message(pool_http_3p, 2, 1, "Hello4!"),
-            assert_recv_message(pool_http_3p, 0, 1, "Hello1!"),
-            assert_recv_message(pool_http_3p, 0, 1, b"Hello3!"),
+            send_message(http_pool_trio, 0, 1, "Hello1!"),
+            send_message(http_pool_trio, 2, 1, b"Hello2!"),
+            send_message(http_pool_trio, 0, 1, b"Hello3!"),
+            send_message(http_pool_trio, 2, 1, "Hello4!"),
+            assert_recv_message(http_pool_trio, 2, 1, b"Hello2!"),
+            assert_recv_message(http_pool_trio, 2, 1, "Hello4!"),
+            assert_recv_message(http_pool_trio, 0, 1, "Hello1!"),
+            assert_recv_message(http_pool_trio, 0, 1, b"Hello3!"),
         )
     )
 
 
 @pytest.mark.asyncio
 async def test_http_3p_server_recv_all_mixed(
-    pool_http_3p: Tuple[Pool, Pool, Pool]
+    http_pool_trio: tuple[Pool, Pool, Pool]
 ) -> None:
     """
     Test receiving of a message from each other party using the recv_all method.
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
     await asyncio.gather(
         *(
-            assert_send_recv_all_message(pool_http_3p, 0, [1, 2], "Hello1!", "id1"),
-            assert_send_recv_all_message(pool_http_3p, 0, [1, 2], b"Hello2!", "id2"),
-            assert_send_recv_all_message(pool_http_3p, 0, [1, 2], b"Hello3!", "id3"),
-            assert_send_recv_all_message(pool_http_3p, 0, [1], "Hello1!", "id4"),
-            assert_send_recv_all_message(pool_http_3p, 0, [2], b"Hello2!", "id5"),
+            assert_send_recv_all_message(http_pool_trio, 0, [1, 2], "Hello1!", "id1"),
+            assert_send_recv_all_message(http_pool_trio, 0, [1, 2], b"Hello2!", "id2"),
+            assert_send_recv_all_message(http_pool_trio, 0, [1, 2], b"Hello3!", "id3"),
+            assert_send_recv_all_message(http_pool_trio, 0, [1], "Hello1!", "id4"),
+            assert_send_recv_all_message(http_pool_trio, 0, [2], b"Hello2!", "id5"),
         )
     )
 
 
 @pytest.mark.asyncio
 async def test_http_3p_server_mixed_broadcast(
-    pool_http_3p: Tuple[Pool, Pool, Pool]
+    http_pool_trio: tuple[Pool, Pool, Pool]
 ) -> None:
     """
     Tests sending and receiving of multiple broadcast messages of various types between three communication pools
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
     await asyncio.gather(
         *(
-            assert_broadcast_message(pool_http_3p, 0, [1, 2], "Hello1!", "id1"),
-            assert_broadcast_message(pool_http_3p, 0, [1, 2], b"Hello2!", "id2"),
-            assert_broadcast_message(pool_http_3p, 0, [1, 2], b"Hello3!", "id3"),
-            assert_broadcast_message(pool_http_3p, 0, [1], "Hello1!", "id4"),
-            assert_broadcast_message(pool_http_3p, 0, [2], b"Hello2!", "id5"),
+            assert_broadcast_message(http_pool_trio, 0, [1, 2], "Hello1!", "id1"),
+            assert_broadcast_message(http_pool_trio, 0, [1, 2], b"Hello2!", "id2"),
+            assert_broadcast_message(http_pool_trio, 0, [1, 2], b"Hello3!", "id3"),
+            assert_broadcast_message(http_pool_trio, 0, [1], "Hello1!", "id4"),
+            assert_broadcast_message(http_pool_trio, 0, [2], b"Hello2!", "id5"),
         )
     )
 
 
 @pytest.mark.asyncio
 async def test_broadcast_msg_id_string_prefix(
-    pool_http_3p: Tuple[Pool, Pool, Pool]
+    http_pool_trio: tuple[Pool, Pool, Pool]
 ) -> None:
     """
     Tests asynchronous sending and receiving of a string with a prefixed custom message id between
     three communication pools
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
-    pool_http_3p[0].update_msg_prefix("prefix")
-    pool_http_3p[1].update_msg_prefix("prefix")
-    pool_http_3p[2].update_msg_prefix("prefix")
+    http_pool_trio[0].update_msg_prefix("prefix")
+    http_pool_trio[1].update_msg_prefix("prefix")
+    http_pool_trio[2].update_msg_prefix("prefix")
 
-    await assert_broadcast_message(pool_http_3p, 0, [1, 2], "Hello1!", "id1")
+    await assert_broadcast_message(http_pool_trio, 0, [1, 2], "Hello1!", "id1")
 
 
 @pytest.mark.asyncio
 async def test_broadcast_msg_id_string_prefix_deviation(
-    pool_http_3p: Tuple[Pool, Pool, Pool]
+    http_pool_trio: tuple[Pool, Pool, Pool]
 ) -> None:
     """
     Tests asynchronous sending and receiving of a string with a prefixed custom message id between
     three communication pools
 
-    :param pool_http_3p: collection of three communication pools
+    :param http_pool_trio: collection of three communication pools
     """
-    pool_http_3p[0].update_msg_prefix("prefix")
-    pool_http_3p[1].update_msg_prefix("prefix")
-    pool_http_3p[2].update_msg_prefix("prefix")
-    list(pool_http_3p[0].pool_handlers.values())[0].msg_prefix = "something different"
+    http_pool_trio[0].update_msg_prefix("prefix")
+    http_pool_trio[1].update_msg_prefix("prefix")
+    http_pool_trio[2].update_msg_prefix("prefix")
+    list(http_pool_trio[0].pool_handlers.values())[0].msg_prefix = "something different"
 
     with pytest.raises(ValueError):
-        await assert_broadcast_message(pool_http_3p, 0, [1, 2], "Hello1!", "id1")
+        await assert_broadcast_message(http_pool_trio, 0, [1, 2], "Hello1!", "id1")

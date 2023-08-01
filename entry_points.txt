@@ -1,0 +1,2 @@
+[pytest11]
+tno_communication_pools = pytest_tno.tno.mpc.communication.pytest_pool_fixtures
