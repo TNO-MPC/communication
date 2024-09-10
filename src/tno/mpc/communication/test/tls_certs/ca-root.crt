@@ -36,7 +36,7 @@ Certificate:
                 CA:TRUE
             X509v3 Key Usage: critical
                 Certificate Sign
-            X509v3 Subject Alternative Name: 
+            X509v3 Subject Alternative Name:
                 IP Address:127.0.0.1, IP Address:192.168.73.120, IP Address:192.168.73.121
     Signature Algorithm: sha256WithRSAEncryption
          2e:59:25:1b:fe:c0:89:82:b9:e8:e6:08:e4:a1:c6:ca:c2:11:

@@ -1,5 +1,5 @@
 """
-Communication library for sending arbitrary Python data types over HTTP(S).
+Root imports for the tno.mpc.communication package.
 """
 
 # Explicit re-export of all functionalities, such that they can be imported properly. Following
@@ -14,8 +14,7 @@ from tno.mpc.communication.serialization import (
     SupportsSerialization as SupportsSerialization,
 )
 
-__version__ = "4.8.1"
-
-
 # Register all default (de)serializers
 Serialization.clear_serialization_logic(reload_defaults=True)
+
+__version__ = "4.11.2"

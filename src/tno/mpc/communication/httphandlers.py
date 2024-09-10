@@ -17,13 +17,13 @@ from aiohttp import (
     ClientSession,
     ClientSSLError,
     ClientTimeout,
+    TCPConnector,
     web,
 )
 
-from .functions import init
-from .serialization import DEFAULT_PACK_OPTION, Serialization
+from tno.mpc.communication.serialization import DEFAULT_PACK_OPTION, Serialization
 
-logger = init(__name__, logger_level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class AbstractPool(Protocol):
@@ -100,18 +100,15 @@ class HTTPClient:
 
     @staticmethod
     @overload
-    def _prefix_msg_id(msg_id: str, msg_prefix: str | None) -> str:
-        ...
+    def _prefix_msg_id(msg_id: str, msg_prefix: str | None) -> str: ...
 
     @staticmethod
     @overload
-    def _prefix_msg_id(msg_id: int, msg_prefix: str) -> str:
-        ...
+    def _prefix_msg_id(msg_id: int, msg_prefix: str) -> str: ...
 
     @staticmethod
     @overload
-    def _prefix_msg_id(msg_id: int, msg_prefix: None) -> int:
-        ...
+    def _prefix_msg_id(msg_id: int, msg_prefix: None) -> int: ...
 
     @staticmethod
     def _prefix_msg_id(msg_id: str | int, msg_prefix: str | None) -> str | int:
@@ -193,7 +190,6 @@ class HTTPClient:
             async with self.session.post(
                 f"http{'s' if self.ssl_ctx else ''}://{self.addr}:{self.port}",
                 data=data,
-                ssl=self.ssl_ctx,
                 timeout=timeout,
             ) as resp:
                 logger.debug(
@@ -257,9 +253,12 @@ class HTTPClient:
 
         :param cookies: Cookies for this ClientSession
         """
-        self.session = ClientSession(
-            cookies=cookies,
-        )
+        if self.ssl_ctx:
+            self.session = ClientSession(
+                cookies=cookies, connector=TCPConnector(ssl=self.ssl_ctx)
+            )
+        else:
+            self.session = ClientSession(cookies=cookies)
 
 
 class HTTPServer:
@@ -274,10 +273,12 @@ class HTTPServer:
         external_port: int | None = None,
         addr: str = "0.0.0.0",
         ssl_ctx: ssl.SSLContext | None = None,
-        get_handler: None
-        | (Callable[[web.Request], Awaitable[web.StreamResponse]]) = None,
-        post_handler: None
-        | (Callable[[web.Request], Awaitable[web.StreamResponse]]) = None,
+        get_handler: None | (
+            Callable[[web.Request], Awaitable[web.StreamResponse]]
+        ) = None,
+        post_handler: None | (
+            Callable[[web.Request], Awaitable[web.StreamResponse]]
+        ) = None,
         option: int | None = None,
         use_pickle: bool = False,
     ):
@@ -309,6 +310,7 @@ class HTTPServer:
         self.use_pickle = use_pickle
         self.loop = pool.loop
         self.site: web.TCPSite | None = None
+        self.runner: web.AppRunner | None = None
         self.msg_recv_counter = 0
         self.total_bytes_recv = 0
 
@@ -326,6 +328,10 @@ class HTTPServer:
         if self.site:
             logger.debug("HTTPServer: Shutting down site")
             await self.site.stop()
+        if self.runner:
+            logger.debug("HTTPServer: Cleaning up runner")
+            await self.runner.cleanup()
+
         logger.info(
             f"Server {self.addr}:{self.port} shutdown\nTotal bytes received: {self.total_bytes_recv}\nTotal messages received: {self.msg_recv_counter}"
         )
@@ -417,10 +423,12 @@ class HTTPServer:
 
     async def run_server(
         self,
-        get_handler: None
-        | (Callable[[web.Request], Awaitable[web.StreamResponse]]) = None,
-        post_handler: None
-        | (Callable[[web.Request], Awaitable[web.StreamResponse]]) = None,
+        get_handler: None | (
+            Callable[[web.Request], Awaitable[web.StreamResponse]]
+        ) = None,
+        post_handler: None | (
+            Callable[[web.Request], Awaitable[web.StreamResponse]]
+        ) = None,
     ) -> None:
         """
         Initializes the HTTP server.
@@ -435,10 +443,10 @@ class HTTPServer:
         app.router.add_get(
             "/{tail:.*}", get_handler if get_handler else self._get_handler
         )
-        runner = web.AppRunner(app)
-        await runner.setup()
+        self.runner = web.AppRunner(app)
+        await self.runner.setup()
         self.site = web.TCPSite(
-            runner, host=self.addr, port=self.port, ssl_context=self.ssl_ctx
+            self.runner, host=self.addr, port=self.port, ssl_context=self.ssl_ctx
         )
         await self.site.start()
 

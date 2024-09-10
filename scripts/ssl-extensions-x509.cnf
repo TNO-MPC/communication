@@ -1,0 +1,4 @@
+[v3_ca]
+basicConstraints = critical,CA:true
+keyUsage = critical,keyCertSign
+subjectAltName = IP:127.0.0.1, IP:192.168.73.120, IP:192.168.73.121

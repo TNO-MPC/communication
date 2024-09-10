@@ -1,6 +1,7 @@
 """
 (De)serialization logic for int.
 """
+
 from typing import Any
 
 from tno.mpc.communication.serialization import Serialization

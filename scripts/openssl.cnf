@@ -1,0 +1,23 @@
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+new_certs_dir = .
+database = ./index.txt
+default_md = sha256
+serial = ./serial
+
+copy_extensions = copy
+basicConstraints = critical,CA:true
+keyUsage = critical,keyCertSign
+
+default_days = 10000
+policy = policy_anything
+
+[ policy_anything ]
+countryName            = optional
+stateOrProvinceName    = optional
+organizationName       = optional
+organizationalUnitName = optional
+commonName             = supplied
+emailAddress           = optional

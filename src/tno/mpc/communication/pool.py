@@ -16,11 +16,10 @@ from typing import Any, Iterable, Union, cast
 
 from aiohttp import ClientTimeout
 
-from .functions import init
-from .httphandlers import HTTPClient, HTTPServer
-from .serialization import DEFAULT_PACK_OPTION, Serialization
+from tno.mpc.communication.httphandlers import HTTPClient, HTTPServer
+from tno.mpc.communication.serialization import DEFAULT_PACK_OPTION, Serialization
 
-logger = init(__name__, logger_level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class Pool:
@@ -432,7 +431,7 @@ class Pool:
         handler_names: Iterable[str] | None = None,
         msg_id: str | None = None,
         timeout: float | None = None,
-    ) -> tuple[tuple[str, Any]]:
+    ) -> list[tuple[str, Any]]:
         """
         Method that receives one message for each party in an asynchronous fashion.
 
@@ -457,7 +456,9 @@ class Pool:
             """
             return handler, await self.recv(handler, msg_id, timeout=timeout)
 
-        return await asyncio.gather(*(result_tuple(handler_name) for handler_name in handler_names))  # type: ignore[no-any-return]
+        return await asyncio.gather(
+            *(result_tuple(handler_name) for handler_name in handler_names)
+        )
 
     async def recv(
         self,

@@ -6,6 +6,7 @@ This module tests packing and unpacking of objects
 from __future__ import annotations
 
 import copy
+import warnings
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -18,6 +19,14 @@ import ormsgpack
 import pandas as pd
 import pytest
 
+try:
+    import torch
+
+    HAS_TORCH = True
+except OSError as exc:
+    warnings.warn(f"Failed to load torch: {exc}")
+    HAS_TORCH = False
+
 from tno.mpc.communication import (
     AnnotationError,
     RepetitionError,
@@ -28,6 +37,12 @@ from tno.mpc.communication.httphandlers import HTTPClient
 from tno.mpc.communication.serialization import DEFAULT_PACK_OPTION
 
 TypePlaceholder = TypeVar("TypePlaceholder")
+
+
+skip_torch = pytest.mark.skipif(
+    HAS_TORCH,
+    reason="skipping as importing torch raised an OSError (probably missing DLLs)",
+)
 
 
 def pack_unpack_test(
@@ -339,6 +354,14 @@ def test_custom_serialization_no_logic() -> None:
         Serialization.register_class(ClassNoLogic)  # type: ignore[arg-type]
 
 
+def test_timestamp() -> None:
+    """
+    Tests packing and unpacking of a timestamp
+    """
+    ts = pd.Timestamp(datetime.now())
+    pack_unpack_test(ts)
+
+
 def test_empty_series_serialization() -> None:
     """
     Tests packing and unpacking of an empty pandas series
@@ -377,7 +400,35 @@ def test_dataframe_serialization() -> None:
         },
         index=["a", "b", "c"],
     )
+    dataframe = dataframe.astype({"datetime": "datetime64[ns]"})
     pack_unpack_test(dataframe, lambda df1, df2: df1.equals(df2))
+
+
+@skip_torch
+def test_empty_pytorch_tensor_serialization() -> None:
+    """
+    Tests packing and unpacking of an empty pytorch tensor
+    """
+    tensor = torch.tensor([])
+    pack_unpack_test(tensor, torch.equal)
+
+
+@skip_torch
+def test_multidimensional_empty_pytorch_tensor_serialization() -> None:
+    """
+    Tests packing and unpacking of a multidimensional empty pytorch tensor
+    """
+    tensor = torch.tensor([[], [[]]])
+    pack_unpack_test(tensor, torch.equal)
+
+
+@skip_torch
+def test_pytorch_tensor_serialization() -> None:
+    """
+    Tests packing and unpacking of a pytorch tensor
+    """
+    tensor = torch.tensor([[1, 2, 3], [1.5, 2.5, 3.5], [True, False, True]])
+    pack_unpack_test(tensor, torch.equal)
 
 
 def test_custom_serialization_no_functions() -> None:

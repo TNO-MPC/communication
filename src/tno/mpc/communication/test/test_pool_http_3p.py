@@ -1,6 +1,7 @@
 """
 This module tests the communication between three communication pools.
 """
+
 from __future__ import annotations
 
 import asyncio

@@ -5,7 +5,9 @@ This module contains the serialization logic used in sending and receiving arbit
 from __future__ import annotations
 
 import inspect
+import logging
 import pickle
+import warnings
 from functools import partial
 from typing import (
     Any,
@@ -23,9 +25,8 @@ from mypy_extensions import Arg, KwArg
 
 from tno.mpc.communication import serializer_plugins
 from tno.mpc.communication.exceptions import AnnotationError, RepetitionError
-from tno.mpc.communication.functions import init
 
-logger = init(__name__)
+logger = logging.getLogger(__name__)
 
 SerializerFunction = Union[
     Callable[[Arg(Any, "self"), KwArg(Any)], Any],
@@ -46,6 +47,16 @@ DEFAULT_PACK_OPTION = (
     | ormsgpack.OPT_PASSTHROUGH_TUPLE
     | ormsgpack.OPT_PASSTHROUGH_DATACLASS
     | ormsgpack.OPT_SERIALIZE_NUMPY
+)
+
+PICKLE_WARNING = """
+Falling back to (de)serialization with pickle. Please be aware that this is a potential security
+ risk. If this behaviour is unexpected, please file an issue at the tno.mpc.communication
+ repository and elaborate on the exact data object that you try to (de)serialize. If you try to
+ (de)serialize a custom object, please refer to the documentation on how to write and register your
+ custom (de)serialization logic.
+""".replace(
+    "\n", ""
 )
 
 
@@ -278,6 +289,7 @@ class Serialization:
         :return: serialized object
         """
         if use_pickle:
+            warnings.warn(PICKLE_WARNING)
             return pickle.dumps(obj)
         # else
         raise NotImplementedError(
@@ -372,6 +384,7 @@ class Serialization:
         :return: deserialized object
         """
         if use_pickle:
+            warnings.warn(PICKLE_WARNING)
             return pickle.loads(obj)
         # else
         raise NotImplementedError(

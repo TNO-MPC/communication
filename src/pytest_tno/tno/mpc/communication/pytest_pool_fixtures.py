@@ -1,21 +1,22 @@
 """
 Pytest fixtures for generating groups of pools.
 """
+
 # pylint: disable=import-outside-toplevel  # toplevel import messes up coverage results
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import itertools
+import socket
 from asyncio import AbstractEventLoop
-from functools import lru_cache, partial
+from functools import lru_cache
 from typing import (
     TYPE_CHECKING,
     Any,
     AsyncIterator,
     Callable,
     Collection,
-    ContextManager,
     Final,
     Iterator,
     List,
@@ -23,7 +24,6 @@ from typing import (
     cast,
 )
 
-import aiohttp
 import pytest
 import pytest_asyncio
 
@@ -140,7 +140,6 @@ def http_pool_trio(
 @pytest.fixture(name="http_pool_group_factory", scope=determine_pool_scope)
 def fixture_http_pool_group_factory(
     _pool_factory: PoolFactory,
-    _enable_port_reuse: Callable[[], ContextManager[None]],
 ) -> Callable[[int], tuple[Pool, ...]]:
     """
     Factory for creating a HTTP pool group with the requested number of pools.
@@ -158,11 +157,10 @@ def fixture_http_pool_group_factory(
         :param n_pools: Number of pools in the group.
         :return: Group of pool objects with mutual communication configured.
         """
-        with _enable_port_reuse():
-            return _generate_test_pools(
-                n_pools,
-                _pool_factory_=_pool_factory,
-            )
+        return _generate_test_pools(
+            n_pools,
+            _pool_factory_=_pool_factory,
+        )
 
     return tno_communication_pool_group
 
@@ -184,7 +182,8 @@ def _generate_test_pools(
             f"The test pool generator can create pool groups with 1-9 clients, but {nr_clients} clients were requested."
         )
     pools = _init_pool_group(_pool_factory_, nr_clients)
-    _configure_servers(pools)
+    ports = get_available_ports(nr_clients)
+    _configure_servers(pools, ports)
     _configure_clients(pools)
     return tuple(pools)
 
@@ -203,19 +202,37 @@ def _init_pool_group(_pool_factory_: PoolFactory, nr_clients: int) -> list[Pool]
     return [_pool_factory_() for _ in range(nr_clients)]
 
 
-def _configure_servers(pools: Collection[Pool]) -> None:
+def get_available_ports(nr_ports: int) -> list[int]:
+    """
+    Get available port numbers.
+
+    :param nr_ports: Amount of available port numbers to obtain.
+    :return: Available port numbers.
+    """
+    return [_get_available_port() for _ in range(nr_ports)]
+
+
+def _get_available_port() -> int:
+    """
+    Get an available port number.
+
+    :return: Port number.
+    """
+    with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return cast(int, s.getsockname()[1])
+
+
+def _configure_servers(pools: Collection[Pool], ports: Collection[int]) -> None:
     """
     Adds a server to every pool.
 
-    If there are n pools in the group, then pool listens on port 4444 + 10 * n + i. Thus, in a
-    group with two pools, pool 0 listens on port 4464 and pool 1 listens on port 4465.
-
     :param pools: Pools that need a server.
+    :param ports: Port per server.
     """
-    nr_clients = len(pools)
-    port_offset = 4444 + nr_clients * 10
-    for pool_nr, pool in enumerate(pools):
-        pool.add_http_server(port=port_offset + pool_nr)
+    for pool, port in zip(pools, ports):
+        pool.add_http_server(port=port)
 
 
 def _configure_clients(pools: Collection[Pool]) -> None:
@@ -238,36 +255,6 @@ def _configure_clients(pools: Collection[Pool]) -> None:
             port=cast(HTTPServer, client_pool.http_server).port,
             cert=client_pool.cert,
         )
-
-
-@pytest.fixture(scope=determine_pool_scope)
-def _enable_port_reuse() -> Callable[[], ContextManager[None]]:
-    """
-    Provides context manager that enables re-use of HTTP ports. Avoids port allocation conflicts
-    between successive generations of pool fixtures.
-
-    More specifically, we avoid "Address already in use" exceptions caused by attempting to
-    connect to ports that have not yet been freed between e.g. two calls to the
-    `https_pool_duo_mutual_tls` fixture when it's scope is limited.
-
-    :return: Contextmanager for environment where aiohttp.web.TCPSite is always generated with
-        'reuse_port=True'.
-    """
-
-    @contextlib.contextmanager
-    def _enable_port_reuse_cm() -> Iterator[None]:
-        """
-        Context manager that enables re-use of HTTP ports. Avoids port allocation conflicts
-        between successive generations of pool fixtures.
-
-        :return: Context manager.
-        """
-        new_tcpsite = partial(aiohttp.web.TCPSite, reuse_port=True)
-        with pytest.MonkeyPatch.context() as mpatched:
-            mpatched.setattr(aiohttp.web, "TCPSite", new_tcpsite)
-            yield
-
-    return _enable_port_reuse_cm
 
 
 @pytest_asyncio.fixture(name="_pool_factory", scope=determine_pool_scope)

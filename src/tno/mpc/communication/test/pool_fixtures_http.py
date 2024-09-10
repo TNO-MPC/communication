@@ -19,7 +19,7 @@ from tno.mpc.communication import Pool
 @pytest_asyncio.fixture(scope="module")
 def event_loop(  # pylint: disable=unused-argument
     request: pytest.FixtureRequest,
-) -> Generator[AbstractEventLoop, None, None]:
+) -> Generator[AbstractEventLoop]:
     """
     Create an instance of the default event loop for each test case. This overrides the event_loop method from
     pytest-asyncio with a scope.
@@ -32,7 +32,7 @@ def event_loop(  # pylint: disable=unused-argument
     loop.close()
 
 
-async def finish(generator: AsyncGenerator[Any, None]) -> None:
+async def finish(generator: AsyncGenerator[Any]) -> None:
     """
     Yield all items from an async generator.
 
@@ -49,7 +49,7 @@ async def pool_http_local_base(
     *args: tuple[str, int],
     tls: bool = False,
     certs_as_identifier: bool = False,
-) -> AsyncGenerator[Pool, None]:
+) -> AsyncGenerator[Pool]:
     r"""
     Generates an async generator which yields a test pool
 
@@ -88,7 +88,7 @@ async def pool_http_local_base(
 @pytest.mark.asyncio
 async def generate_http_test_pools(
     clients: int, *args: Any, **kwargs: Any
-) -> AsyncGenerator[tuple[Pool, ...], None]:
+) -> AsyncGenerator[tuple[Pool, ...]]:
     r"""
     Generates an async generator which yields n test pools which are all connected with each other.
     Connections:
@@ -135,7 +135,7 @@ async def generate_http_test_pools(
 
 # HTTP
 @pytest_asyncio.fixture(name="pool_http_2p", scope="module")
-async def fixture_pool_http_2p() -> AsyncGenerator[tuple[Pool, ...], None]:
+async def fixture_pool_http_2p() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 2 communication pools
 
@@ -147,7 +147,7 @@ async def fixture_pool_http_2p() -> AsyncGenerator[tuple[Pool, ...], None]:
 
 
 @pytest_asyncio.fixture(name="pool_http_3p", scope="module")
-async def fixture_pool_http_3p() -> AsyncGenerator[tuple[Pool, ...], None]:
+async def fixture_pool_http_3p() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 3 communication pools
 
@@ -159,7 +159,7 @@ async def fixture_pool_http_3p() -> AsyncGenerator[tuple[Pool, ...], None]:
 
 
 @pytest_asyncio.fixture(name="pool_http_4p", scope="module")
-async def fixture_pool_http_4p() -> AsyncGenerator[tuple[Pool, ...], None]:
+async def fixture_pool_http_4p() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 4 communication pools
 
@@ -171,7 +171,7 @@ async def fixture_pool_http_4p() -> AsyncGenerator[tuple[Pool, ...], None]:
 
 
 @pytest_asyncio.fixture(name="pool_http_5p", scope="module")
-async def fixture_pool_http_5p() -> AsyncGenerator[tuple[Pool, ...], None]:
+async def fixture_pool_http_5p() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 5 communication pools
 
@@ -184,7 +184,7 @@ async def fixture_pool_http_5p() -> AsyncGenerator[tuple[Pool, ...], None]:
 
 # HTTPS
 @pytest_asyncio.fixture(name="pool_https_2p", scope="function")
-async def fixture_pool_https_2p() -> AsyncGenerator[tuple[Pool, ...], None]:
+async def fixture_pool_https_2p() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 2 communication pools using SSL/TLS
 
@@ -196,7 +196,7 @@ async def fixture_pool_https_2p() -> AsyncGenerator[tuple[Pool, ...], None]:
 
 
 @pytest_asyncio.fixture(name="pool_https_3p", scope="function")
-async def fixture_pool_https_3p() -> AsyncGenerator[tuple[Pool, ...], None]:
+async def fixture_pool_https_3p() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 3 communication pools using SSL/TLS
 
@@ -208,7 +208,7 @@ async def fixture_pool_https_3p() -> AsyncGenerator[tuple[Pool, ...], None]:
 
 
 @pytest_asyncio.fixture(name="pool_https_3p_certs_as_id", scope="function")
-async def fixture_pool_https_3p_certs_as_id() -> AsyncGenerator[tuple[Pool, ...], None]:
+async def fixture_pool_https_3p_certs_as_id() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 3 communication pools using SSL/TLS
 
@@ -222,7 +222,7 @@ async def fixture_pool_https_3p_certs_as_id() -> AsyncGenerator[tuple[Pool, ...]
 
 
 @pytest_asyncio.fixture(name="pool_https_4p", scope="function")
-async def fixture_pool_https_4p() -> AsyncGenerator[tuple[Pool, ...], None]:
+async def fixture_pool_https_4p() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 4 communication pools using SSL/TLS
 
@@ -234,7 +234,7 @@ async def fixture_pool_https_4p() -> AsyncGenerator[tuple[Pool, ...], None]:
 
 
 @pytest_asyncio.fixture(name="pool_https_5p", scope="function")
-async def fixture_pool_https_5p() -> AsyncGenerator[tuple[Pool, ...], None]:
+async def fixture_pool_https_5p() -> AsyncGenerator[tuple[Pool, ...]]:
     """
     Creates a collection of 5 communication pools using SSL/TLS
 

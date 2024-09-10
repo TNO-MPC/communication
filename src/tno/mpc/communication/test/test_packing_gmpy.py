@@ -2,6 +2,7 @@
 This module tests packing and unpacking of objects
 (serialization/deserialization) when gmpy is installed
 """
+
 # pylint: disable=wrong-import-position
 
 import pandas as pd

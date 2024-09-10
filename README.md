@@ -1,57 +1,74 @@
 # TNO PET Lab - secure Multi-Party Computation (MPC) - Communication
 
-The TNO PET Lab consists of generic software components, procedures, and
-functionalities developed and maintained on a regular basis to facilitate and
-aid in the development of PET solutions. The lab is a cross-project initiative
-allowing us to integrate and reuse previously developed PET functionalities to
-boost the development of new protocols and solutions.
+Generic communication module for pool-based communication intended for
+use in the Multi-Party Computation modules of the PET Lab.
 
-The package tno.mpc.communication is part of the TNO Python Toolbox.
+### PET Lab
 
-_Limitations in (end-)use: the content of this repository may solely be used for
-applications that comply with international export control laws._  
-_This implementation of cryptographic software has not been audited. Use at your
-own risk._
+The TNO PET Lab consists of generic software components, procedures, and functionalities developed and maintained on a regular basis to facilitate and aid in the development of PET solutions. The lab is a cross-project initiative allowing us to integrate and reuse previously developed PET functionalities to boost the development of new protocols and solutions.
+
+The package `tno.mpc.communication` is part of the [TNO Python Toolbox](https://github.com/TNO-PET).
+
+_Limitations in (end-)use: the content of this software package may solely be used for applications that comply with international export control laws._  
+_This implementation of cryptographic software has not been audited. Use at your own risk._
 
 ## Documentation
 
-Documentation of the tno.mpc.communication package can be found
-[here](https://docs.pet.tno.nl/mpc/communication/4.8.1).
+Documentation of the `tno.mpc.communication` package can be found
+[here](https://docs.pet.tno.nl/mpc/communication/4.11.2).
 
 ## Install
 
-Easily install the tno.mpc.communication package using pip:
+Easily install the `tno.mpc.communication` package using `pip`:
 
 ```console
 $ python -m pip install tno.mpc.communication
 ```
 
+_Note:_ If you are cloning the repository and wish to edit the source code, be
+sure to install the package in editable mode:
+
+```console
+$ python -m pip install -e 'tno.mpc.communication'
+```
+
+If you wish to run the tests you can use:
+
+```console
+$ python -m pip install 'tno.mpc.communication[tests]'
+```
+
 Note: The package specifies several optional dependency groups:
 
-- `gmpy`: Adds support for sending various `gmpy2` types
-- `tests`: Includes all optional libraries required to run the full test suite
-- `tls`: Required if SSL is needed
 - `bitarray`: Adds support for sending `bitarray` types
+- `gmpy`: Adds support for sending various `gmpy2` types
 - `numpy`: Adds support for sending `numpy` types
 - `pandas`: Adds support for sending `pandas` types
+- `tests`: Includes all optional libraries required to run the full test suite
+- `tls`: Required if SSL is needed
+- `torch`: Adds support for sending `torch` types through [`safetensors`](https://huggingface.co/docs/safetensors/index), thereby avoiding `pickle`. Deserialized tensors are stored in CPU memory (the [`pytorch` docs](https://pytorch.org/docs/stable/generated/torch.Tensor.cuda.html#torch.Tensor.cuda) explain how to store a copy in CUDA memory).
 
 See [sending, receiving messages](#sending-receiving-messages) for more
-information on the supported third party types. Optional dependencies can be
-installed by specifying their names in brackets after the package name, e.g.
-when using `pip install`, use `pip install tno.mpc.communication[extra1,extra2]`
-to install the groups `extra1` and `extra2`.
+information on the supported third party types.
+Optional dependencies can be installed by specifying their names in brackets
+after the package name, e.g. when using `pip install`, use `pip install
+tno.mpc.communication[extra1,extra2]` to install the groups `extra1` and
+`extra2`.
 
 ## Usage
 
-The communication module uses `async` functions for sending and receiving. If
-you are familiar with the async module, you can skip to the `Pools` section.
+The communication module uses `async` functions for sending and receiving. If you are familiar
+with the async module, you can skip to the `Pools` section.
 
 ### Async explanation
 
 When `async` functions are called, they return what is called a _coroutine_.
-This is a special kind of object, because it is basically a promise that the
-code will be run and a result will be given when the coroutine is given to a
-so-called _event loop_. For example, see the following
+This is a special kind of object, because it is basically a promise that the code will be run and
+a result will be given once the code has been ran.
+
+Async methods are defined using `async def`, which tells
+python that it should return a coroutine. `asyncio.run` can run the coroutine, but should only be
+called from the top-level. The advertised approach to use coroutines is as follows:
 
 ```python
 import asyncio
@@ -59,74 +76,33 @@ import asyncio
 async def add(a: int, b: int) -> int:
     return a + b
 
-def main():
-    a,b = 1, 2
-    coroutine_object = add(a, b) # This is now a coroutine object of type Awaitable[int]
-    event_loop = asyncio.get_event_loop() # This is the event loop that will run the coroutine
-    result = event_loop.run_until_complete(coroutine_object) # This call starts the coroutine in the event loop
-    print(result) # this prints 3
+async def main():
+    a, b = 1, 2
+    result = await add(a, b)  # result is set once the coroutine add(a, b) has finished. other code may run in the meantime.
+    print(result)  # this prints 3
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 ```
 
-As you can see from the example, the async methods are defined using
-`async def`, which tells python that it should return a coroutine. We saw how we
-can call an async function from a regular function using the event loop. _Note
-that you should never redefine the event loop and always retrieve the event loop
-as done in the example_ (unless you know what you are doing). We can also call
-async functions from other async functions using the `await` statement, as is
-shown in the following example.
-
-```python
-import asyncio
-
-async def add_four_numbers(first: int, second: int, third: int, fourth: int) -> int:
-    first_second = await add(first, second) # This is blocking, so the function will wait until this is done
-    third_fourth_coroutine = add(third, fourth) # This is non-blocking, so the code will continue while the add(third,fourth) code starts running
-    # we can do some other stuff here
-    print("I am a print statement")
-    third_fourth = await third_fourth_coroutine # we wait until the add(third,fourth) is done
-    result = await add(first_second, third_fourth)
-    # here it is important to use await for the result, because then an integer is produced and given
-    # to the return statement instead of a coroutine
-    return result
-
-async def add(a: int, b: int) -> int:
-    return a + b
-
-def main():
-    a, b, c, d = 1, 2, 3, 4
-    coroutine_object = add_four_numbers(a, b, c, d) # This is now a coroutine object of type Awaitable[int]
-    event_loop = asyncio.get_event_loop() # This is the event loop that will run the coroutine
-    result = event_loop.run_until_complete(coroutine_object) # This call starts the coroutine in the event loop
-    print(result) # this prints 10
-
-if __name__ == "__main__":
-    main()
-```
-
-Note that the type of the `coroutine_object` in the `main` function is an
-`Awaitable[int]`. This refers to the fact that the result can be awaited (inside
-an `async` function) and will return an integer once that is done.
+Here, the `main` function _awaits_ the result of the coroutine. As a consequence, the `main`
+function itself is a coroutine. We let `asyncio` do the heavy lifting by calling it from the
+top-level.
 
 ### Pools
 
-A `Pool` represents a network. A Pool contains a server, which listens for
-incoming messages from other parties in the network, and clients for each other
-party in the network. These clients are called upon when we want to send or
-receive messages.
+A `Pool` represents a network. A Pool contains a server, which listens for incoming messages from
+other parties in the network, and clients for each other party in the network. These clients are
+called upon when we want to send or receive messages.
 
-It is also possible to use and initialize the pool without taking care of the
-event loop yourself, in that case the template below can be ignored and the
-examples can be used as one would regularly do. (An event loop is however still
-needed when using the `await` keyword or when calling an `async` function.)
+It is also possible to use and initialize the pool without taking care of the event loop
+yourself, in that case the template below can be ignored and the examples can be used as one
+would regularly do. (An event loop is however still needed when using the `await` keyword or
+when calling an `async` function.)
 
 ### Template
 
-Below you can find a template for using `Pool`. Alternatively, you could create
-the pool in the `main` logic and give it as a parameter to the `async_main`
-function.
+Below you can find a template for using `Pool`.
 
 ```python
 import asyncio
@@ -138,8 +114,7 @@ async def async_main():
     # ...
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_main())
+    asyncio.run(async_main())
 ```
 
 ### Pool initialization
@@ -148,15 +123,9 @@ The following logic works both in regular functions and `async` functions.
 
 #### Without SSL/TLS (do not use in production)
 
-The following snippet will start a HTTP server and define its clients. Clients
-are configured on both the sending and the receiving side. The sending side
-needs to know who to send a message to. The receiving side needs to know who it
-receives a message from for further handling.
+The following snippet will start a HTTP server and define its clients. Clients are configured on both the sending and the receiving side. The sending side needs to know who to send a message to. The receiving side needs to know who it receives a message from for further handling.
 
-By default the `Pool` object uses the origin IP and port to identify the client.
-However, a more secure and robust identification through SSL/TLS certificates is
-also supported and described in section
-[With SSL/TLS (SSL/TLS certificate as client identifier)](#with-ssltls-ssltls-certificate-as-client-identifier).
+By default the `Pool` object uses the origin IP and port to identify the client. However, a more secure and robust identification through SSL/TLS certificates is also supported and described in section [With SSL/TLS (SSL/TLS certificate as client identifier)](#with-ssltls-ssltls-certificate-as-client-identifier).
 
 ```python
 from tno.mpc.communication import Pool
@@ -169,13 +138,7 @@ pool.add_http_client("Client 2", "192.168.0.102", port=1234)
 
 #### With SSL/TLS
 
-A more secure connection can be achieved by using SSL/TLS. A `Pool` object can
-be initialized with paths to key, certificate and CA certificate files that are
-passed as arguments to a
-[`ssl.SSLContext`](https://docs.python.org/3/library/ssl.html#ssl.SSLContext)
-object. More information on the expected files can be found in the
-`Pool.__init__` docstring and the
-[`ssl` documentation](https://docs.python.org/3/library/ssl.html#certificates).
+A more secure connection can be achieved by using SSL/TLS. A `Pool` object can be initialized with paths to key, certificate and CA certificate files that are passed as arguments to a [`ssl.SSLContext`](https://docs.python.org/3/library/ssl.html#ssl.SSLContext) object. More information on the expected files can be found in the `Pool.__init__` docstring and the [`ssl` documentation](https://docs.python.org/3/library/ssl.html#certificates).
 
 ```python
 from tno.mpc.communication import Pool
@@ -186,24 +149,13 @@ pool.add_http_client("Client 1", "192.168.0.101") # default port=443
 pool.add_http_client("Client 2", "192.168.0.102", port=1234)
 ```
 
-We do not pose constraints on the certificates that you use in the protocol.
-However, your organisation most likely poses minimal security requirements on
-the certificates used. As such we do not advocate a method for generating
-certificates but rather suggest to contact your system administrator for
-obtaining certificates.
+We do not pose constraints on the certificates that you use in the protocol. However, your organisation most likely poses minimal security requirements on the certificates used. As such we do not advocate a method for generating certificates but rather suggest to contact your system administrator for obtaining certificates.
 
 #### With SSL/TLS (SSL/TLS certificate as client identifier)
 
-This approach does not use the origin of a message (HTTP request) as identifier
-of a party, but rather the SSL/TLS certificate of that party. This requires a
-priori exchange of the certificates, but is more robust to more complex (docker)
-network stacks, proxies, port forwarding, load balancers, IP spoofing, etc.
+This approach does not use the origin of a message (HTTP request) as identifier of a party, but rather the SSL/TLS certificate of that party. This requires a priori exchange of the certificates, but is more robust to more complex (docker) network stacks, proxies, port forwarding, load balancers, IP spoofing, etc.
 
-More specifically, we assume that a certificate has a unique combination of
-issuer Common Name and S/N and use these components to create a HTTP client
-identifier. Our assumption is based on the fact that we trust the issuer (TSL
-assumption) and that the issuer is supposed to hand out end-user certificates
-with different serial numbers.
+More specifically, we assume that a certificate has a unique combination of issuer Common Name and S/N and use these components to create a HTTP client identifier. Our assumption is based on the fact that we trust the issuer (TSL assumption) and that the issuer is supposed to hand out end-user certificates with different serial numbers.
 
 ```python
 from tno.mpc.communication import Pool
@@ -213,37 +165,34 @@ pool.add_http_server() # default port=443
 pool.add_http_client("Client 1", "192.168.0.101", port=1234, cert="path/to/client/certfile")
 ```
 
-Additional dependencies are required in order to load and compare certificates.
-These can be installed by installing this package with the `tls` extra, e.g.
-`pip install tno.mpc.communication[tls]`.
+Additional dependencies are required in order to load and compare certificates. These can be installed by installing this package with the `tls` extra, e.g. `pip install tno.mpc.communication[tls]`.
 
 #### Adding clients
 
-HTTP clients are identified by an address. The address can be an IP address, but
-hostnames are also supported. For example, when communicating between two docker
-containers on the same network, the address that is provided to
-`pool.add_http_client` can either be the IP address of the client container or
-the name of the client container.
+HTTP clients are identified by an address. The address can be an IP address, but hostnames are also supported. For example, when communicating between two docker containers on the same network, the address that is provided to `pool.add_http_client` can either be the IP address of the client container or the name of the client container.
 
 ### Sending, receiving messages
 
-The library supports sending the following objects through the send and receive
-methods:
+The library supports sending the following objects through the send and receive methods:
 
 - strings
 - byte strings
 - integers
 - floats
 - enum (partially, see [Serializing `Enum`](#serializing-enum))
-- (nested) lists/tuples/dictionaries/numpy arrays containing any of the above.
-  Combinations of these as well.
+- (nested) lists/tuples/dictionaries/numpy arrays containing any of the above. Combinations of these as well.
 
-Under the hood [`ormsgpack`](https://pypi.org/project/ormsgpack) is used,
-additional options can be activated using the `option` parameter (see,
-https://github.com/aviramha/ormsgpack#option).
+Furthermore, types from several third party libraries are supported (note that the library must be installed for this to work):
 
-Messages can be sent both synchronously and asynchronously. If you do not know
-which one to use, use the synchronous methods with `await`.
+- `bitarray` (class) from `bitarray` (library)
+- various types from `gmpy2`
+- `NDArray` from `numpy`
+- `Dataframe` from `pandas` (requires `pyarrow`)
+
+Under the hood [`ormsgpack`](https://pypi.org/project/ormsgpack) is used, additional options can be activated using the `option` parameter (see, https://github.com/aviramha/ormsgpack#option).
+
+Messages can be sent both synchronously and asynchronously.
+If you do not know which one to use, use the synchronous methods with `await`.
 
 ```python
 # Client 0
@@ -267,9 +216,7 @@ res = await pool.recv("Client 0", "Message ID 1")
 
 ### Custom serialization logic
 
-It is also possible to define serialization logic in custom classes and load the
-logic into the commmunication module. An example is given below. We elaborate on
-the requirements for such classes after the example.
+It is also possible to define serialization logic in custom classes and load the logic into the commmunication module. An example is given below. We elaborate on the requirements for such classes after the example.
 
 ```python
 class SomeClass:
@@ -283,33 +230,30 @@ class SomeClass:
         # by serialize back into an object of type SomeClass
 ```
 
-The class needs to contain a `serialize` method and a `deserialize` method. The
-type annotation is necessary and validated by the communication module. Next to
-this, the `**kwargs` argument is also necessary to allow for nested
-(de)serialization that makes use of additional optional keyword arguments. It is
-not necessary to use any of these optional keyword arguments. If one does not
-make use of the `**kwargs` and also does not make a call to a subsequent
-`Serialization.serialize()` or `Serialization.deserialize()`, it is advised to
-write `**_kwargs: Any` instead of `**kwargs: Any`.
+The class needs to contain a `serialize` method and a `deserialize` method. The type annotation is necessary and validated by the
+communication module.
+Next to this, the `**kwargs` argument is also necessary to allow for nested (de)serialization that
+makes use of additional optional keyword arguments. It is not necessary to use any of these optional keyword
+arguments. If one does not make use of the `**kwargs` and also does not make a call to a subsequent
+`Serialization.serialize()` or `Serialization.deserialize()`, it is advised to write
+`**_kwargs: Any` instead of `**kwargs: Any`.
 
-To add this logic to the communication module, you have to run the following
-command at the start of your script. The `check_annotiations` parameter
-determines whether the type hints of the serialization code and the presence of
-a `**kwargs` parameter are checked. You should only change this to False _if you
-are exactly sure of what you are doing_.
+To add this logic to the communication module, you have to run the following command at the start of your script. The `check_annotiations` parameter determines whether
+the type hints of the serialization code and the presence of a `**kwargs` parameter are checked.
+You should change this to `False` _only if you are exactly sure of what you are doing_.
 
 ```python
-from tno.mpc.communication import Serialization
+from tno.mpc.communication import RepetitionError, Serialization
 
-if __name__ == "__main__":
-   Serialization.set_serialization_logic(SomeClass, check_annotations=True)
+try:
+    Serialization.register_class(SomeClass, check_annotations=True)
+except RepetitionError:
+    pass
 ```
 
 ### Serializing `Enum`
 
-The `Serialization` module can serialize an `Enum` member; however, only the
-value is serialized. The simplest way to work around this limitation is to
-convert the deserialized object into an `Enum` member:
+The `Serialization` module can serialize an `Enum` member; however, only the value is serialized. The simplest way to work around this limitation is to convert the deserialized object into an `Enum` member:
 
 ```python
 from enum import Enum, auto
@@ -331,10 +275,10 @@ enum_res = TestEnum(res)  # TestEnum.B <enum 'TestEnum'>
 
 ## Example code
 
-Below is a very minimal example of how to use the library. It consists of two
-instances, Alice and Bob, who greet each other. Here, Alice runs on localhost
-and uses port 61001 for sending/receiving. Bob also runs on localhost, but uses
-port 61002.
+Below is a very minimal example of how to use the library.
+It consists of two instances, Alice and Bob, who greet each other.
+Here, Alice runs on localhost and uses port 61001 for sending/receiving.
+Bob also runs on localhost, but uses port 61002.
 
 `alice.py`
 
@@ -360,8 +304,7 @@ async def async_main():
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_main())
+    asyncio.run(async_main())
 ```
 
 `bob.py`
@@ -388,42 +331,32 @@ async def async_main():
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_main())
+    asyncio.run(async_main())
 ```
 
-To run this example, run each of the files in a separate terminal window. Note
-that if `alice.py` is started prior to `bob.py`, it will throw a
-`ClientConnectorError`. Namely, Alice tries to send a message to port 61002,
-which has not been opened by Bob yet. After starting `bob.py`, the error
-disappears.
+To run this example, run each of the files in a separate terminal window.
+Note that if `alice.py` is started prior to `bob.py`, it will throw a `ClientConnectorError`.
+Namely, Alice tries to send a message to port 61002, which has not been opened by Bob yet.
+After starting `bob.py`, the error disappears.
 
-The outputs in the two terminals will be something similar to the following:
-
-```bash
->>> python alice.py
-2022-07-07 09:36:20,220 - tno.mpc.communication.httphandlers - INFO - Serving on 127.0.0.1:61001
-2022-07-07 09:36:20,230 - tno.mpc.communication.httphandlers - INFO - Received message from 127.0.0.1:61002
-Hello back to you, Bob!
-2022-07-07 09:36:20,232 - tno.mpc.communication.httphandlers - INFO - HTTPServer: Shutting down server task
-2022-07-07 09:36:20,232 - tno.mpc.communication.httphandlers - INFO - Server 127.0.0.1:61001 shutdown
-```
+The outputs in the two terminals will be the following:
 
 ```bash
 >>> python bob.py
-2022-07-07 09:36:16,915 - tno.mpc.communication.httphandlers - INFO - Serving on 127.0.0.1:61002
-2022-07-07 09:36:20,223 - tno.mpc.communication.httphandlers - INFO - Received message from 127.0.0.1:61001
 Hello Bob! This is Alice speaking.
-2022-07-07 09:36:20,232 - tno.mpc.communication.httphandlers - INFO - HTTPServer: Shutting down server task
-2022-07-07 09:36:20,256 - tno.mpc.communication.httphandlers - INFO - Server 127.0.0.1:61002 shutdown
 ```
+
+```bash
+>>> python alice.py
+Hello back to you, Alice!
+```
+
+To get more information of what happens under the hood, you can import `logging` in both files and
+add the line `logging.basicConfig(level=logging.INFO)` before `asyncio.run`. If you want to know even more, you can set the `level` to `logging.DEBUG`.
 
 ## Test fixtures
 
-The `tno.mpc.communication` package exports several pytest fixtures as pytest
-plugins to facilitate the user in testing with pool objects. The fixtures take
-care of all configuration and clean-up of the pool objects so that you don't
-have to worry about that.
+The `tno.mpc.communication` package exports several pytest fixtures as pytest plugins to facilitate the user in testing with pool objects. The fixtures take care of all configuration and clean-up of the pool objects so that you don't have to worry about that.
 
 Usage:
 
@@ -452,21 +385,6 @@ def test_with_variable_pools(
 
 ### Fixture scope
 
-The scope of the fixtures can be set dynamically through the
-`--fixture-pool-scope`
-[option to pytest](https://docs.pytest.org/en/7.1.x/reference/reference.html#configuration-options).
-_Note that this will also change the scope of the global `event_loop` fixture
-that is provided by `pytest-asyncio`._ By default, in line with
-`pytest_asyncio`, the scope of all our fixtures is `"function"`. We advise to
-configure a larger scope (e.g. `"session"`, `"package"` or `"module"`) when
-possible to reduce test set-up and teardown time.
+The scope of the fixtures can be set dynamically through the `--fixture-pool-scope` [option to pytest](https://docs.pytest.org/en/7.1.x/reference/reference.html#configuration-options). _Note that this will also change the scope of the global `event_loop` fixture that is provided by `pytest-asyncio`._ By default, in line with `pytest_asyncio`, the scope of all our fixtures is `"function"`. We advise to configure a larger scope (e.g. `"session"`, `"package"` or `"module"`) when possible to reduce test set-up and teardown time.
 
-Our fixtures pass `True` to the `port_reuse` argument of `aiohttp.web.TCPSite`.
-Their
-[documentation](https://docs.aiohttp.org/en/stable/web_reference.html?highlight=reuse_port#aiohttp.web.TCPSite)
-states that this option is not supported on Windows (outside of WSL). If you
-experience any issues, please disable the plugin by adding
-`-p no:pytest_tno.tno.mpc.communication.pytest_pool_fixtures` to your pytest
-configuration. Note that without `port_reuse` the tests may crash, as the test
-may try to bind to ports which may not have been freed by the operating system.
-For more reliable testing, run the tests on a WSL / Linux platform.
+Our fixtures pass `True` to the `port_reuse` argument of `aiohttp.web.TCPSite`. Their [documentation](https://docs.aiohttp.org/en/stable/web_reference.html?highlight=reuse_port#aiohttp.web.TCPSite) states that this option is not supported on Windows (outside of WSL). If you experience any issues, please disable the plugin by adding `-p no:pytest_tno.tno.mpc.communication.pytest_pool_fixtures` to your pytest configuration. Note that without `port_reuse` the tests may crash, as the test may try to bind to ports which may not have been freed by the operating system. For more reliable testing, run the tests on a WSL / Linux platform.

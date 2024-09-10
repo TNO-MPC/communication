@@ -1,12 +1,15 @@
 """
 (De)serialization logic for bitarray objects.
 """
+
 from typing import Any
 
-from tno.mpc.communication.functions import redirect_importerror_to_optionalimporterror
+from tno.mpc.communication.functions import (
+    redirect_importerror_oserror_to_optionalimporterror,
+)
 from tno.mpc.communication.serialization import Serialization
 
-with redirect_importerror_to_optionalimporterror():
+with redirect_importerror_oserror_to_optionalimporterror():
     import bitarray
     import bitarray.util
 

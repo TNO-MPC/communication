@@ -1,12 +1,15 @@
 """
 (De)serialization logic for gmpy objects.
 """
+
 from typing import TYPE_CHECKING, Any, Union
 
-from tno.mpc.communication.functions import redirect_importerror_to_optionalimporterror
+from tno.mpc.communication.functions import (
+    redirect_importerror_oserror_to_optionalimporterror,
+)
 from tno.mpc.communication.serialization import Serialization
 
-with redirect_importerror_to_optionalimporterror():
+with redirect_importerror_oserror_to_optionalimporterror():
     import gmpy2
 
 

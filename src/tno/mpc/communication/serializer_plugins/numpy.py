@@ -2,14 +2,17 @@
 (De)serialization logic for numpy objects. Used only when
 ormsgpack.packb(..., option=(ormsgpack.OPT_SERIALIZE_NUMPY, ...)) fails.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
-from tno.mpc.communication.functions import redirect_importerror_to_optionalimporterror
+from tno.mpc.communication.functions import (
+    redirect_importerror_oserror_to_optionalimporterror,
+)
 from tno.mpc.communication.serialization import Serialization
 
-with redirect_importerror_to_optionalimporterror():
+with redirect_importerror_oserror_to_optionalimporterror():
     import numpy as np
     import numpy.typing as npt
 

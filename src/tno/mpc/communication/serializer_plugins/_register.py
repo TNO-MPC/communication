@@ -1,6 +1,7 @@
 """
 Import serialization logic provided by package (plugins).
 """
+
 import importlib
 from typing import Any, List
 
@@ -12,6 +13,7 @@ PLUGINS_STR = [
     "tno.mpc.communication.serializer_plugins.int",
     "tno.mpc.communication.serializer_plugins.numpy",
     "tno.mpc.communication.serializer_plugins.pandas",
+    "tno.mpc.communication.serializer_plugins.torch",
     "tno.mpc.communication.serializer_plugins.tuple",
 ]
 PLUGINS: List[Any] = []

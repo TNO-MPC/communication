@@ -6,4 +6,6 @@ _register_plugins defines a list of plugins (modules) that is to be registered. 
 subset of the other modules in this directory.
 """
 
-from ._register import register_defaults as register_defaults
+from tno.mpc.communication.serializer_plugins._register import (
+    register_defaults as register_defaults,
+)

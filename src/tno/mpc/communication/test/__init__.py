@@ -1,5 +1,5 @@
 """
-Testing module of the tno.mpc.communication library
+Testing module of the tno.mpc.communication package.
 """
 
 # Explicit re-export of all functionalities, such that they can be imported properly. Following

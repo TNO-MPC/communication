@@ -3,6 +3,7 @@ Pytest fixtures for tno.mpc.communication.
 
 This module is not exported as pytest plugin.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

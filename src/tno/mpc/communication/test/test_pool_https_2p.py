@@ -1,14 +1,16 @@
 """
 This module tests the communication between three communication pools with SSL enabled
 """
+
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Callable, ContextManager
+from typing import Any, AsyncIterator, Callable
 
 import pytest
 import pytest_asyncio
 from aiohttp import ClientConnectorCertificateError
 
+from pytest_tno.tno.mpc.communication.pytest_pool_fixtures import get_available_ports
 from tno.mpc.communication import Pool
 from tno.mpc.communication.test.conftest import TEST_CERTIFICATE_DIR
 from tno.mpc.communication.test.test_pool_http_3p import assert_send_message
@@ -62,19 +64,20 @@ async def fixture_pool_factory_function_scope() -> AsyncIterator[Callable[..., P
 @pytest.mark.asyncio
 async def test_https_pool_no_mutual_tls_delivers_messages(
     _pool_factory: Callable[..., Pool],
-    _enable_port_reuse: Callable[[], ContextManager[None]],
 ) -> None:
     """
     Tests sending and receiving of multiple messages between two communication pools using SSL/TLS
     verification of the server only.
+
+    :param _pool_factory: Pool factory fixture.
     """
     sender = _pool_factory(**CERT_TRUSTED_SERVER)
     receiver = _pool_factory(**CERT_TRUSTED_CLIENT)
-    with _enable_port_reuse():
-        sender.add_http_server(4440)
-        receiver.add_http_server(4441)
-    sender.add_http_client("local1", "127.0.0.1", 4441, cert=None)
-    receiver.add_http_client("local0", "127.0.0.1", 4440, cert=None)
+    sender_port, receiver_port = get_available_ports(2)
+    sender.add_http_server(sender_port)
+    receiver.add_http_server(receiver_port)
+    sender.add_http_client("local1", "127.0.0.1", receiver_port, cert=None)
+    receiver.add_http_client("local0", "127.0.0.1", sender_port, cert=None)
 
     await assert_send_message((sender, receiver), 0, 1, "Secure hello to you!")
     await assert_send_message((sender, receiver), 1, 0, "Secure hello to you too!")
@@ -83,22 +86,23 @@ async def test_https_pool_no_mutual_tls_delivers_messages(
 @pytest.mark.asyncio
 async def test_https_pool_with_mutual_tls_delivers_messages(
     _pool_factory: Callable[..., Pool],
-    _enable_port_reuse: Callable[[], ContextManager[None]],
 ) -> None:
     """
     Tests sending and receiving of multiple messages between two communication pools using mutual
     SSL/TLS verification.
+
+    :param _pool_factory: Pool factory fixture.
     """
     sender = _pool_factory(**CERT_TRUSTED_SERVER)
     receiver = _pool_factory(**CERT_TRUSTED_CLIENT)
-    with _enable_port_reuse():
-        sender.add_http_server(4440)
-        receiver.add_http_server(4441)
+    sender_port, receiver_port = get_available_ports(2)
+    sender.add_http_server(sender_port)
+    receiver.add_http_server(receiver_port)
     sender.add_http_client(
-        "local1", "127.0.0.1", 4441, cert=CERT_TRUSTED_CLIENT["cert"]
+        "local1", "127.0.0.1", receiver_port, cert=CERT_TRUSTED_CLIENT["cert"]
     )
     receiver.add_http_client(
-        "local0", "127.0.0.1", 4440, cert=CERT_TRUSTED_SERVER["cert"]
+        "local0", "127.0.0.1", sender_port, cert=CERT_TRUSTED_SERVER["cert"]
     )
 
     await assert_send_message((sender, receiver), 0, 1, "Doubly secure hello to you!")
@@ -110,19 +114,20 @@ async def test_https_pool_with_mutual_tls_delivers_messages(
 @pytest.mark.asyncio
 async def test_https_pool_fails_if_server_pool_has_unauthorized_certificate(
     _pool_factory: Callable[..., Pool],
-    _enable_port_reuse: Callable[[], ContextManager[None]],
 ) -> None:
     """
     Assert that mutual TLS communication fails if the server's certificate is signed by an unknown
     CA.
+
+    :param _pool_factory: Pool factory fixture.
     """
     sender = _pool_factory(**CERT_UNTRUSTED)
     receiver = _pool_factory(**CERT_TRUSTED_CLIENT)
-    with _enable_port_reuse():
-        sender.add_http_server(4440)
-        receiver.add_http_server(4441)
-    sender.add_http_client("local1", "127.0.0.1", 4441)
-    receiver.add_http_client("local0", "127.0.0.1", 4440)
+    sender_port, receiver_port = get_available_ports(2)
+    sender.add_http_server(sender_port)
+    receiver.add_http_server(receiver_port)
+    sender.add_http_client("local1", "127.0.0.1", receiver_port)
+    receiver.add_http_client("local0", "127.0.0.1", sender_port)
 
     with pytest.raises(ClientConnectorCertificateError):
         await assert_send_message(
@@ -133,20 +138,23 @@ async def test_https_pool_fails_if_server_pool_has_unauthorized_certificate(
 @pytest.mark.asyncio
 async def test_https_pool_fails_if_client_pool_has_unauthorized_certificate(
     _pool_factory: Callable[..., Pool],
-    _enable_port_reuse: Callable[[], ContextManager[None]],
 ) -> None:
     """
     Assert that mutual TLS communication fails if the client's certificate is signed by an unknown
     CA.
+
+    :param _pool_factory: Pool factory fixture.
     """
     sender = _pool_factory(**CERT_TRUSTED_SERVER)
     receiver = _pool_factory(**CERT_UNTRUSTED)
-    with _enable_port_reuse():
-        sender.add_http_server(4440)
-        receiver.add_http_server(4441)
-    sender.add_http_client("local1", "127.0.0.1", 4441, cert=CERT_UNTRUSTED["cert"])
+    sender_port, receiver_port = get_available_ports(2)
+    sender.add_http_server(sender_port)
+    receiver.add_http_server(receiver_port)
+    sender.add_http_client(
+        "local1", "127.0.0.1", receiver_port, cert=CERT_UNTRUSTED["cert"]
+    )
     receiver.add_http_client(
-        "local0", "127.0.0.1", 4440, cert=CERT_TRUSTED_SERVER["cert"]
+        "local0", "127.0.0.1", sender_port, cert=CERT_TRUSTED_SERVER["cert"]
     )
 
     with pytest.raises(ClientConnectorCertificateError):
