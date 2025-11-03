@@ -3,8 +3,8 @@ This module contains helper functions.
 """
 
 import warnings
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 from tno.mpc.communication.exceptions import OptionalImportError
 

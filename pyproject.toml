@@ -25,9 +25,9 @@ classifiers = [
     "Typing :: Typed",
     "Topic :: Security :: Cryptography",
 ]
-urls = { Homepage = "https://pet.tno.nl/", Documentation = "https://docs.pet.tno.nl/mpc/communication/4.11.2", Source = "https://github.com/TNO-Mpc/communication" }
+urls = { Homepage = "https://pet.tno.nl/", Documentation = "https://docs.pet.tno.nl/mpc/communication/4.12.0", Source = "https://github.com/TNO-MPC/communication" }
 dynamic = ["entry-points", "version"]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "aiohttp>=3.6.1,<4.0",
     "mypy_extensions",
@@ -105,7 +105,7 @@ addopts = "--fixture-pool-scope module"
 timeout = 10
 
 [tool.tbump.version]
-current = "4.11.2"
+current = "4.12.0"
 regex = '''
 \d+\.\d+\.\d+(-(.*))?
 '''

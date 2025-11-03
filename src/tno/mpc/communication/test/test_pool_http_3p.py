@@ -5,7 +5,8 @@ This module tests the communication between three communication pools.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 import pytest
 from aiohttp import ClientTimeout

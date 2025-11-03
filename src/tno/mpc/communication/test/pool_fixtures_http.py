@@ -7,8 +7,9 @@ from __future__ import annotations
 import asyncio
 import warnings
 from asyncio import AbstractEventLoop
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
-from typing import Any, AsyncGenerator, Generator
+from typing import Any
 
 import pytest
 import pytest_asyncio

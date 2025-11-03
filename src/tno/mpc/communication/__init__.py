@@ -17,4 +17,4 @@ from tno.mpc.communication.serialization import (
 # Register all default (de)serializers
 Serialization.clear_serialization_logic(reload_defaults=True)
 
-__version__ = "4.11.2"
+__version__ = "4.12.0"

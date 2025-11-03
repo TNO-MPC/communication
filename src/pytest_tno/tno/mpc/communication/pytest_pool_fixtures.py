@@ -10,19 +10,9 @@ import contextlib
 import itertools
 import socket
 from asyncio import AbstractEventLoop
+from collections.abc import AsyncIterator, Collection, Iterator
 from functools import lru_cache
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    AsyncIterator,
-    Callable,
-    Collection,
-    Final,
-    Iterator,
-    List,
-    Literal,
-    cast,
-)
+from typing import TYPE_CHECKING, Any, Callable, Final, Literal, cast
 
 import pytest
 import pytest_asyncio
@@ -32,7 +22,7 @@ if TYPE_CHECKING:
     from tno.mpc.communication.httphandlers import HTTPServer
 
     PoolFactory = Callable[..., Pool]
-    PoolGroupFactory = Callable[[PoolFactory, int], List[Pool]]
+    PoolGroupFactory = Callable[[PoolFactory, int], list[Pool]]
 
 DEFAULT_POOL_SCOPE = "function"
 PYTEST_SCOPES: Final = ["function", "class", "module", "package", "session"]

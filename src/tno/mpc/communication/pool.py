@@ -11,8 +11,9 @@ import socket
 import ssl
 import warnings
 from asyncio import Future
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable, Union, cast
+from typing import Any, Union, cast
 
 from aiohttp import ClientTimeout
 

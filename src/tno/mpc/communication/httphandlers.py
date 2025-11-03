@@ -9,7 +9,8 @@ import functools
 import logging
 import ssl
 from asyncio import Future, Transport
-from typing import Any, Awaitable, Callable, Protocol, cast, overload
+from collections.abc import Awaitable
+from typing import Any, Callable, Protocol, cast, overload
 
 from aiohttp import (
     ClientConnectorCertificateError,

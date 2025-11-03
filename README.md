@@ -15,7 +15,7 @@ _This implementation of cryptographic software has not been audited. Use at your
 ## Documentation
 
 Documentation of the `tno.mpc.communication` package can be found
-[here](https://docs.pet.tno.nl/mpc/communication/4.11.2).
+[here](https://docs.pet.tno.nl/mpc/communication/4.12.0).
 
 ## Install
 
@@ -48,7 +48,7 @@ Note: The package specifies several optional dependency groups:
 - `tls`: Required if SSL is needed
 - `torch`: Adds support for sending `torch` types through [`safetensors`](https://huggingface.co/docs/safetensors/index), thereby avoiding `pickle`. Deserialized tensors are stored in CPU memory (the [`pytorch` docs](https://pytorch.org/docs/stable/generated/torch.Tensor.cuda.html#torch.Tensor.cuda) explain how to store a copy in CUDA memory).
 
-See [sending, receiving messages](#sending-receiving-messages) for more
+See [sending, receiving messages](https://raw.githubusercontent.com/TNO-MPC/communication/main/#sending-receiving-messages) for more
 information on the supported third party types.
 Optional dependencies can be installed by specifying their names in brackets
 after the package name, e.g. when using `pip install`, use `pip install
@@ -125,7 +125,7 @@ The following logic works both in regular functions and `async` functions.
 
 The following snippet will start a HTTP server and define its clients. Clients are configured on both the sending and the receiving side. The sending side needs to know who to send a message to. The receiving side needs to know who it receives a message from for further handling.
 
-By default the `Pool` object uses the origin IP and port to identify the client. However, a more secure and robust identification through SSL/TLS certificates is also supported and described in section [With SSL/TLS (SSL/TLS certificate as client identifier)](#with-ssltls-ssltls-certificate-as-client-identifier).
+By default the `Pool` object uses the origin IP and port to identify the client. However, a more secure and robust identification through SSL/TLS certificates is also supported and described in section [With SSL/TLS (SSL/TLS certificate as client identifier)](https://raw.githubusercontent.com/TNO-MPC/communication/main/#with-ssltls-ssltls-certificate-as-client-identifier).
 
 ```python
 from tno.mpc.communication import Pool
@@ -179,7 +179,7 @@ The library supports sending the following objects through the send and receive 
 - byte strings
 - integers
 - floats
-- enum (partially, see [Serializing `Enum`](#serializing-enum))
+- enum (partially, see [Serializing `Enum`](https://raw.githubusercontent.com/TNO-MPC/communication/main/#serializing-enum))
 - (nested) lists/tuples/dictionaries/numpy arrays containing any of the above. Combinations of these as well.
 
 Furthermore, types from several third party libraries are supported (note that the library must be installed for this to work):

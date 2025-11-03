@@ -8,17 +8,9 @@ import inspect
 import logging
 import pickle
 import warnings
+from collections.abc import Collection, Container, Iterable
 from functools import partial
-from typing import (
-    Any,
-    Callable,
-    Collection,
-    Container,
-    Iterable,
-    Protocol,
-    TypeVar,
-    Union,
-)
+from typing import Any, Callable, Protocol, TypeVar, Union
 
 import ormsgpack
 from mypy_extensions import Arg, KwArg

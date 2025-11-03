@@ -8,7 +8,7 @@ import datetime
 import io
 import sys
 import warnings
-from typing import Any, Callable, Dict, cast
+from typing import Any, Callable, cast
 
 from packaging.version import parse
 
@@ -100,7 +100,7 @@ def pandas_serialize_dataframe(  # pylint: disable=missing-raises-doc
         else:
             raise exc
     # Fall-back to dictionary serialization
-    return cast(Dict[str, Any], obj.to_dict(orient="split"))
+    return cast(dict[str, Any], obj.to_dict(orient="split"))
 
 
 def pandas_deserialize_dataframe(

@@ -3,7 +3,7 @@ Import serialization logic provided by package (plugins).
 """
 
 import importlib
-from typing import Any, List
+from typing import Any
 
 from tno.mpc.communication.exceptions import OptionalImportError
 
@@ -16,7 +16,7 @@ PLUGINS_STR = [
     "tno.mpc.communication.serializer_plugins.torch",
     "tno.mpc.communication.serializer_plugins.tuple",
 ]
-PLUGINS: List[Any] = []
+PLUGINS: list[Any] = []
 
 
 def _import_plugins() -> None:

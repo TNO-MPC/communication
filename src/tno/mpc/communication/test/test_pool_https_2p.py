@@ -4,7 +4,8 @@ This module tests the communication between three communication pools with SSL e
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Callable
+from collections.abc import AsyncIterator
+from typing import Any, Callable
 
 import pytest
 import pytest_asyncio
