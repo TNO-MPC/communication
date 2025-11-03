@@ -1,33 +1,28 @@
 """
-Pytest fixtures for generating groups of pools.
+This module is configured as a pytest plugin and thus automatically exposes the
+fixtures from the `tno.mpc.communication` package to library users when
+installed.
+
+The module defines a custom option, `--fixture-pool-scope`, that allows users
+to set the scope of the pool-related fixtures. The default scope is `function`.
+
+This module also hacks the `pytest-asyncio` plugin to ensure that all tests run
+in the same event loop as the pool fixtures.
 """
 
-# pylint: disable=import-outside-toplevel  # toplevel import messes up coverage results
-from __future__ import annotations
-
-import asyncio
-import contextlib
-import itertools
-import socket
-from asyncio import AbstractEventLoop
-from collections.abc import AsyncIterator, Collection, Iterator
-from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Callable, Final, Literal, cast
+import warnings
+from typing import Final, Literal
 
 import pytest
-import pytest_asyncio
 
-if TYPE_CHECKING:
-    from tno.mpc.communication import Pool
-    from tno.mpc.communication.httphandlers import HTTPServer
-
-    PoolFactory = Callable[..., Pool]
-    PoolGroupFactory = Callable[[PoolFactory, int], list[Pool]]
-
-DEFAULT_POOL_SCOPE = "function"
+DEFAULT_LOOP_SCOPE = "function"
 PYTEST_SCOPES: Final = ["function", "class", "module", "package", "session"]
 PYTEST_SCOPES_LITERAL = Literal[  # pylint: disable=invalid-name
-    "function", "class", "module", "package", "session"
+    "function",
+    "class",
+    "module",
+    "package",
+    "session",
 ]
 
 
@@ -40,237 +35,89 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("asyncio")
     group.addoption(
         "--fixture-pool-scope",
-        default=DEFAULT_POOL_SCOPE,
         type=str,
         choices=PYTEST_SCOPES,
-        help="set scope for the tno.mpc.communication pool and asyncio event_loop fixtures",
+        help="set scope for the tno.mpc.communication pool fixtures, which by default copies asyncio_default_fixture_loop_scope",
     )
-
-
-def pytest_plugin_registered(  # pylint: disable=unused-argument  # required arguments to pytest hook
-    plugin: Any, manager: pytest.PytestPluginManager
-) -> None:
-    """
-    Overwrite the pytest-asyncio event loop with a dynamically-scoped event loop.
-
-    The logic in pytest-asyncio heavily relies on the assumption that a fixture with the name
-    "event_loop" provides an event loop (and injects that fixture dynamically to test definitions).
-    As such, our dynamically-scoped fixture "event_loop" competes with the pytest_asyncio
-    "event_loop" and we explicitly overwrite it.
-
-    :param plugin: Plugin module or instance.
-    :param manager: pytest plugin manager.
-    """
-    # Both our and pytest_asyncio's "event_loop" are consulted last by pytest
-    # (https://docs.pytest.org/en/stable/reference/fixtures.html#fixtures-from-third-party-plugins)
-    # and pytest prefers the "event_loop" of pytest_asyncio (possibly due to the lower scope;
-    # https://docs.pytest.org/en/stable/reference/fixtures.html#higher-scoped-fixtures-are-executed-first,
-    # or because of some intricacies in the the pytest_asyncio module).
-    setattr(pytest_asyncio.plugin, "event_loop", event_loop)
 
 
 def determine_pool_scope(
     fixture_name: str, config: pytest.Config
 ) -> PYTEST_SCOPES_LITERAL:
     """
-    Getter for the scope of all fixtures related to pool objects. This includes the event loop
-    fixture.
+    Getter for the scope of all fixtures related to pool objects.
 
     :param fixture_name: required by pytest.
     :param config: Pytest configuration object.
     :return: Fixture scope.
     """
     del fixture_name
-    return config.getoption("--fixture-pool-scope")  # type: ignore[no-any-return]
+    return config.getoption("--fixture-pool-scope") or config.getini("asyncio_default_fixture_loop_scope") or DEFAULT_LOOP_SCOPE  # type: ignore[return-value]
 
 
-@pytest.fixture(scope=determine_pool_scope)
-def event_loop(  # pylint: disable=unused-argument
-    request: pytest.FixtureRequest,
-) -> Iterator[AbstractEventLoop]:
-    """
-    Create an instance of the default event loop. This overrides the event_loop method from
-    pytest-asyncio with a custom scope. The scope is set according to the globally configured scope
-    (--fixture-pool-scope).
+try:
+    from pytest_tno.tno.mpc.communication.pytest_pool_http_fixtures import *  # noqa: F401 # pylint: disable=unused-wildcard-import,wildcard-import
+    from pytest_tno.tno.mpc.communication.pytest_pool_mock_fixtures import *  # noqa: F401 # pylint: disable=unused-wildcard-import,wildcard-import
 
-    :param request: A fixture request.
-    :return: A new event loop.
-    """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope=determine_pool_scope)
-def http_pool_duo(
-    http_pool_group_factory: Callable[[int], tuple[Pool, ...]]
-) -> tuple[Pool, Pool]:
-    """
-    Two communication pools without TLS/SSL.
-
-    :param http_pool_group_factory: factory for creating a HTTP pool group.
-    :return: Two communication pools without TLS/SSL.
-    """
-    return http_pool_group_factory(2)  # type: ignore[return-value]
-
-
-@pytest.fixture(scope=determine_pool_scope)
-def http_pool_trio(
-    http_pool_group_factory: Callable[[int], tuple[Pool, ...]]
-) -> tuple[Pool, Pool, Pool]:
-    """
-    Three communication pools without TLS/SSL.
-
-    :param http_pool_group_factory: factory for creating a HTTP pool group.
-    :return: Three communication pools without TLS/SSL.
-    """
-    return http_pool_group_factory(3)  # type: ignore[return-value]
-
-
-@pytest.fixture(name="http_pool_group_factory", scope=determine_pool_scope)
-def fixture_http_pool_group_factory(
-    _pool_factory: PoolFactory,
-) -> Callable[[int], tuple[Pool, ...]]:
-    """
-    Factory for creating a HTTP pool group with the requested number of pools.
-
-    The pool group is configured without SSL certificates.
-
-    :return: Factory for creating a HTTP pool group with the requested number of pools.
-    """
-
-    @lru_cache
-    def tno_communication_pool_group(n_pools: int) -> tuple[Pool, ...]:
+    def pytest_configure(config: pytest.Config) -> None:
         """
-        Factory for creating a HTTP pool group with the requested number of pools.
+        Configure our pytest_tno plugin. Checks whether the pytest-asyncio loop scopes
+        are set appropriately.
 
-        :param n_pools: Number of pools in the group.
-        :return: Group of pool objects with mutual communication configured.
+        The `pytest-asyncio` library has creates an `event_loop` per scope. This
+        gives us trouble as we want to have the pool fixtures to have a large scope
+        (i.e. session), yet have the tests run in small scopes (i.e. function,
+        which is the default for tests). Thus, when a default test requests
+        a session-scope fixture, the fixture will have been initialized on
+        a different event-loop (the session-scoped loop) than it is used on (once
+        in the test, the running event loop is the function-scoped loop).
+
+        Unfortunately, `aiohttp` doesn't handle this well, as
+        `aiohttp.ClientSession` keeps a reference to the event_loop upon creation
+        under `self._loop`. Thus once the `ClientSession` is invoked in a test, the
+        running event loop is not equal to the referenced loop, and the library
+        throws an error.
+
+        Therefore, we enforce the default asyncio fixture and test loop scopes to be
+        identical (see `pyproject.toml`), and that the `--fixture-pool-scope` (from `pytest_tno`) scope is not
+        larger.
         """
-        return _generate_test_pools(
-            n_pools,
-            _pool_factory_=_pool_factory,
+        fixture_loop_scope_option = (
+            config.getini("asyncio_default_fixture_loop_scope") or DEFAULT_LOOP_SCOPE
+        )
+        test_loop_scope_option = (
+            config.getini("asyncio_default_test_loop_scope") or DEFAULT_LOOP_SCOPE
         )
 
-    return tno_communication_pool_group
+        if fixture_loop_scope_option != test_loop_scope_option:
+            warnings.warn(
+                "The value of the option `asyncio_default_fixture_loop_scope` "
+                f"({test_loop_scope_option}) is different from the value of the option "
+                f"`asyncio_default_test_loop_scope` ({fixture_loop_scope_option}). This "
+                "will very likely cause issues when using the `tno.mpc.communication` "
+                "fixtures."
+            )
 
+        pytest_tno_pool_fixture_scope = determine_pool_scope("", config)
+        if PYTEST_SCOPES.index(pytest_tno_pool_fixture_scope) > PYTEST_SCOPES.index(
+            fixture_loop_scope_option
+        ):
+            warnings.warn(
+                "The scope provided through the option `--fixture-pool-scope` "
+                f"({pytest_tno_pool_fixture_scope}) is larger then the scope of "
+                f"`asyncio_default_test_loop_scope` ({fixture_loop_scope_option}). This "
+                "will very likely cause issues when using the `tno.mpc.communication` "
+                "fixtures."
+            )
 
-def _generate_test_pools(
-    nr_clients: int,
-    _pool_factory_: PoolFactory,
-) -> tuple[Pool, ...]:
-    """
-    Generates a group of communication pools and sets up the communication between them.
-
-    :param nr_clients: Number of pools in the group.
-    :param _pool_factory_: Factory of pool objects.
-    :raise ValueError: If the number of clients exceeds nine.
-    :return: Fully initialized pools.
-    """
-    if nr_clients < 1 or nr_clients > 9:
-        raise ValueError(
-            f"The test pool generator can create pool groups with 1-9 clients, but {nr_clients} clients were requested."
-        )
-    pools = _init_pool_group(_pool_factory_, nr_clients)
-    ports = get_available_ports(nr_clients)
-    _configure_servers(pools, ports)
-    _configure_clients(pools)
-    return tuple(pools)
-
-
-def _init_pool_group(_pool_factory_: PoolFactory, nr_clients: int) -> list[Pool]:
-    """
-    HTTP pool group initializer.
-
-    Initializes all pools for the group without certificates.
-    Does not configure communication.
-
-    :param _pool_factory_: Pool factory.
-    :param nr_clients: Number of pools in the group.
-    :return: Group of pool objects.
-    """
-    return [_pool_factory_() for _ in range(nr_clients)]
-
-
-def get_available_ports(nr_ports: int) -> list[int]:
-    """
-    Get available port numbers.
-
-    :param nr_ports: Amount of available port numbers to obtain.
-    :return: Available port numbers.
-    """
-    return [_get_available_port() for _ in range(nr_ports)]
-
-
-def _get_available_port() -> int:
-    """
-    Get an available port number.
-
-    :return: Port number.
-    """
-    with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return cast(int, s.getsockname()[1])
-
-
-def _configure_servers(pools: Collection[Pool], ports: Collection[int]) -> None:
-    """
-    Adds a server to every pool.
-
-    :param pools: Pools that need a server.
-    :param ports: Port per server.
-    """
-    for pool, port in zip(pools, ports):
-        pool.add_http_server(port=port)
-
-
-def _configure_clients(pools: Collection[Pool]) -> None:
-    """
-    Adds clients to every pool in the group. Configures mutual connection between every pair of
-    pools.
-
-    :param pools: Group of pools that are configured with servers.
-    """
-    from tno.mpc.communication.httphandlers import HTTPServer
-
-    for server_pool, (client_nr, client_pool) in itertools.product(
-        pools, enumerate(pools)
-    ):
-        if server_pool == client_pool:
-            continue
-        server_pool.add_http_client(
-            name=f"local{client_nr}",
-            addr="127.0.0.1",
-            port=cast(HTTPServer, client_pool.http_server).port,
-            cert=client_pool.cert,
+        warnings.warn(
+            "The `tno.mpc.communication` fixtures set an infinite timeout for "
+            "awaiting messages through a Pool. This is to prevent tests from "
+            "hanging on slow CI/CD pipelines. To reproduce this behavior "
+            "locally, set `Pool(..., timeout=None)`."
         )
 
-
-@pytest_asyncio.fixture(name="_pool_factory", scope=determine_pool_scope)
-async def _fixture_pool_factory() -> AsyncIterator[PoolFactory]:
-    """
-    Factory of pool objects. Ensures proper shutdown afterwards.
-
-    :return: Factory function for a single pool object.
-    """
-    from tno.mpc.communication import Pool
-
-    pools: list[Pool] = []
-
-    def pool_creator(*args: Any, **kwargs: Any) -> Pool:
-        r"""
-        Create a Pool with the provided arguments.
-
-        :param \*args: Positional arguments to Pool.
-        :param \**kwargs: Keyword arguments to Pool.
-        :return: Instantiated Pool.
-        """
-        pool = Pool(*args, **kwargs)
-        pools.append(pool)
-        return pool
-
-    yield pool_creator
-
-    for pool in pools:
-        await pool.shutdown()
+except ImportError:
+    warnings.warn(
+        "Failed to import the dependencies for the 'tno.mpc.communication' fixtures. If you require these fixtures, please install `tno.mpc.communication[pytest]`."
+    )

@@ -25,21 +25,18 @@ classifiers = [
     "Typing :: Typed",
     "Topic :: Security :: Cryptography",
 ]
-urls = { Homepage = "https://pet.tno.nl/", Documentation = "https://docs.pet.tno.nl/mpc/communication/4.12.0", Source = "https://github.com/TNO-MPC/communication" }
+urls = { Homepage = "https://pet.tno.nl/", Documentation = "https://docs.pet.tno.nl/mpc/communication/5.0.4", Source = "https://github.com/TNO-MPC/communication" }
 dynamic = ["entry-points", "version"]
 requires-python = ">=3.9"
 dependencies = [
     "aiohttp>=3.6.1,<4.0",
-    "mypy_extensions",
     "ormsgpack>=1.1.0",
-    "packaging",
+    "tenacity>=8.0.0",
+    "typing_extensions~=4.5; python_version<'3.12'",
 ]
 
 [project.optional-dependencies]
 gmpy = [
-    "tno.mpc.encryption_schemes.utils[gmpy]",
-]
-gmpy2 = [
     "tno.mpc.encryption_schemes.utils[gmpy]",
 ]
 bitarray = [
@@ -51,6 +48,11 @@ numpy = [
 pandas = [
     "pandas",
     "pyarrow",
+    "packaging",
+]
+pytest = [
+    "aiocache~=0.12",
+    "pytest-asyncio~=1.0",
 ]
 tls = [
     "pyOpenSSL",
@@ -59,10 +61,10 @@ torch = [
     "safetensors[torch]~=0.4",
 ]
 tests = [
-    "tno.mpc.communication[bitarray,gmpy,numpy,pandas,torch,tls]",
+    "tno.mpc.communication[gmpy,bitarray,numpy,pandas,pytest,torch,tls]",
+    "mypy_extensions",
     "pandas-stubs",
     "pytest~=8.0",
-    "pytest-asyncio<0.22",
     "pytest-timeout~=2.2",
     "typeguard",
 ]
@@ -101,11 +103,12 @@ namespace_packages = true
 explicit_package_bases = true
 
 [tool.pytest.ini_options]
-addopts = "--fixture-pool-scope module"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 timeout = 10
 
 [tool.tbump.version]
-current = "4.12.0"
+current = "5.0.4"
 regex = '''
 \d+\.\d+\.\d+(-(.*))?
 '''

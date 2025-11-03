@@ -19,3 +19,15 @@ class OptionalImportError(ImportError):
     """
     Raised when an optional import is missing.
     """
+
+
+class CommunicationError(Exception):
+    """
+    Raised when a communication operation failed.
+    """
+
+
+class NumpySerializationWarning(Warning):
+    """
+    Raised when the user tries to serialize a numpy array to warn the user about the limitations.
+    """

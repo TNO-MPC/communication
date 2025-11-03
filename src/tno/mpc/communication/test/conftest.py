@@ -7,13 +7,10 @@ This module is not exported as pytest plugin.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 
-from tno.mpc.communication import serialization
-
-TEST_CERTIFICATE_DIR = Path(__file__).parents[0] / "tls_certs"
+from tno.mpc.communication import Serializer
 
 
 @pytest.fixture(autouse=True)
@@ -27,8 +24,8 @@ def mock_serialization_funcs(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     :param monkeypatch: pytest fixture monkeypatch.
     :return: yield control.
     """
-    mock_serializer_funcs = serialization.SERIALIZER_FUNCS.copy()
-    mock_deserializer_funcs = serialization.DESERIALIZER_FUNCS.copy()
-    monkeypatch.setattr(serialization, "SERIALIZER_FUNCS", mock_serializer_funcs)
-    monkeypatch.setattr(serialization, "DESERIALIZER_FUNCS", mock_deserializer_funcs)
+    mock_serializer_funcs = Serializer._serializer_funcs.copy()
+    mock_deserializer_funcs = Serializer._deserializer_funcs.copy()
+    monkeypatch.setattr(Serializer, "_serializer_funcs", mock_serializer_funcs)
+    monkeypatch.setattr(Serializer, "_deserializer_funcs", mock_deserializer_funcs)
     yield

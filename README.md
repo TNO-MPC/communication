@@ -15,7 +15,7 @@ _This implementation of cryptographic software has not been audited. Use at your
 ## Documentation
 
 Documentation of the `tno.mpc.communication` package can be found
-[here](https://docs.pet.tno.nl/mpc/communication/4.12.0).
+[here](https://docs.pet.tno.nl/mpc/communication/5.0.4).
 
 ## Install
 
@@ -38,29 +38,31 @@ If you wish to run the tests you can use:
 $ python -m pip install 'tno.mpc.communication[tests]'
 ```
 
-Note: The package specifies several optional dependency groups:
+Note: The package specifies several additional optional dependency groups:
+
+Functionality:
+
+- `pytest`: Required for utilizing this package's pytest fixtures (see also [Test fixtures](https://raw.githubusercontent.com/TNO-MPC/communication/main/#test-fixtures))
+- `tls`: Required if SSL is needed
+
+Serialization support for third-party types:
 
 - `bitarray`: Adds support for sending `bitarray` types
 - `gmpy`: Adds support for sending various `gmpy2` types
 - `numpy`: Adds support for sending `numpy` types
 - `pandas`: Adds support for sending `pandas` types
 - `tests`: Includes all optional libraries required to run the full test suite
-- `tls`: Required if SSL is needed
 - `torch`: Adds support for sending `torch` types through [`safetensors`](https://huggingface.co/docs/safetensors/index), thereby avoiding `pickle`. Deserialized tensors are stored in CPU memory (the [`pytorch` docs](https://pytorch.org/docs/stable/generated/torch.Tensor.cuda.html#torch.Tensor.cuda) explain how to store a copy in CUDA memory).
 
-See [sending, receiving messages](https://raw.githubusercontent.com/TNO-MPC/communication/main/#sending-receiving-messages) for more
+See [Sending and receiving messages](https://raw.githubusercontent.com/TNO-MPC/communication/main/#sending-and-receiving-messages) for more
 information on the supported third party types.
-Optional dependencies can be installed by specifying their names in brackets
-after the package name, e.g. when using `pip install`, use `pip install
-tno.mpc.communication[extra1,extra2]` to install the groups `extra1` and
-`extra2`.
 
 ## Usage
 
 The communication module uses `async` functions for sending and receiving. If you are familiar
-with the async module, you can skip to the `Pools` section.
+with the async module, you can skip to the [Creating a `Pool`](https://raw.githubusercontent.com/TNO-MPC/communication/main/#creating-a-pool) section.
 
-### Async explanation
+### Introduction to `asyncio`
 
 When `async` functions are called, they return what is called a _coroutine_.
 This is a special kind of object, because it is basically a promise that the code will be run and
@@ -89,89 +91,141 @@ Here, the `main` function _awaits_ the result of the coroutine. As a consequence
 function itself is a coroutine. We let `asyncio` do the heavy lifting by calling it from the
 top-level.
 
-### Pools
+### Creating a `Pool`
 
-A `Pool` represents a network. A Pool contains a server, which listens for incoming messages from
-other parties in the network, and clients for each other party in the network. These clients are
-called upon when we want to send or receive messages.
+Let's assume you want to implement a protocol with two parties, and you want
+to use the `tno.mpc.communication` for communication between the two parties.
+Each party will need to create a `Pool`, configure a `Communicator`, and
+register the other party to the `Pool` and `Communicator`.
+Once configured, the `Pool` can be used for communication.
 
-It is also possible to use and initialize the pool without taking care of the event loop
-yourself, in that case the template below can be ignored and the examples can be used as one
-would regularly do. (An event loop is however still needed when using the `await` keyword or
-when calling an `async` function.)
+If you're just starting out, you can choose to use plain `HTTP` (insecure). If
+you want to secure your traffic, configure SSL in order to use `HTTPS`.
 
-### Template
+<details open>
+<summary><b>Pool using HTTP</b></summary>
 
-Below you can find a template for using `Pool`.
-
-```python
-import asyncio
-
-from tno.mpc.communication import Pool
-
-async def async_main():
-    pool = Pool()
-    # ...
-
-if __name__ == "__main__":
-    asyncio.run(async_main())
-```
-
-### Pool initialization
-
-The following logic works both in regular functions and `async` functions.
-
-#### Without SSL/TLS (do not use in production)
-
-The following snippet will start a HTTP server and define its clients. Clients are configured on both the sending and the receiving side. The sending side needs to know who to send a message to. The receiving side needs to know who it receives a message from for further handling.
-
-By default the `Pool` object uses the origin IP and port to identify the client. However, a more secure and robust identification through SSL/TLS certificates is also supported and described in section [With SSL/TLS (SSL/TLS certificate as client identifier)](https://raw.githubusercontent.com/TNO-MPC/communication/main/#with-ssltls-ssltls-certificate-as-client-identifier).
+The example below is from the perspective of our first party, called
+Alice. Alice sets up a `HttpCommunicator`, which starts a HTTP server and
+provides it to the `Pool`. Alice then adds Bob and Charlie by specifying how to
+connect to their communicators.
 
 ```python
-from tno.mpc.communication import Pool
-
-pool = Pool()
-pool.add_http_server() # default port=80
-pool.add_http_client("Client 1", "192.168.0.101") # default port=80
-pool.add_http_client("Client 2", "192.168.0.102", port=1234)
+# We create a "communicator" which deals with implementing networking for Alice.
+# Alice needs to provide some information to set it up, i.e. the ip-address and
+# port to which she wants to bind (and to receive traffic on).
+communicator = HttpCommunicator(addr="localhost", port=80) # Configure the HTTP server of Alice
+# The Pool provides a simple interface for sending and receiving things
+pool = Pool("Alice", communicator)
+# We add a client called "Bob" and provide configuration to setup the connection to Bob
+pool.add_client("Bob", HttpConnection(addr="123.4.56.78", port=80))
 ```
 
-#### With SSL/TLS
+</details>
 
-A more secure connection can be achieved by using SSL/TLS. A `Pool` object can be initialized with paths to key, certificate and CA certificate files that are passed as arguments to a [`ssl.SSLContext`](https://docs.python.org/3/library/ssl.html#ssl.SSLContext) object. More information on the expected files can be found in the `Pool.__init__` docstring and the [`ssl` documentation](https://docs.python.org/3/library/ssl.html#certificates).
+<details>
+<summary><b>Pool using HTTPS</b></summary>
+
+In order to use SSL, the communicator must be given an SSLContext for both its
+"client" part (i.e. the context used while sending HTTP requests) and its
+"server" part (i.e. the context used by the HTTP Server). Below an example is
+given that shows how to configure both contexts.
 
 ```python
-from tno.mpc.communication import Pool
+from tno.mpc.communication import create_ssl_context
 
-pool = Pool(key="path/to/keyfile", cert="path/to/certfile", ca_cert="path/to/cafile")
-pool.add_http_server() # default port=443
-pool.add_http_client("Client 1", "192.168.0.101") # default port=443
-pool.add_http_client("Client 2", "192.168.0.102", port=1234)
+ALICE_KEY = "./src/tno/mpc/communication/test/tls_certs/party_0.pem"
+ALICE_CERT = "./src/tno/mpc/communication/test/tls_certs/party_0.crt"
+BOB_CERT = "./src/tno/mpc/communication/test/tls_certs/party_1.crt"
+CA_CERT = "./src/tno/mpc/communication/test/tls_certs/ca-root.crt"
+
+# SSL Configuration of Alice
+ssl_server_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+ssl_server_context.load_cert_chain(certfile=ALICE_CERT, keyfile=ALICE_KEY)
+ssl_server_context.load_verify_locations(cafile=CA_CERT)
+ssl_server_context.check_hostname = False # Testing certificates will no have the correct hostname
+ssl_server_context.verify_mode = ssl.CERT_REQUIRED # In order to require mutual TLS, this MUST be set
+
+ssl_client_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH) # The ssl_client_context is _used_ by the client _to authenticate the server_.
+ssl_client_context.load_cert_chain(certfile=BOB_CERT, keyfile=BOB_KEY)
+ssl_client_context.load_verify_locations(cafile=CA_CERT)
+ssl_client_context.check_hostname = False
+
+# Alice
+communicator = HttpCommunicator(
+    addr="localhost",
+    port=80,
+    ssl_server_context=ssl_server_context,
+    ssl_client_context=ssl_client_context
+)
+pool = Pool("Alice", communicator)
+
+# We add a client called "Bob" and provide configuration to setup the connection to Bob
+pool.add_client(
+    "Bob",
+    HttpConnection(
+        addr="123.4.56.78",
+        port=80,
+        cert=BOB_CERT,  # The public certificate of Bob
+    ),
+)
 ```
 
-We do not pose constraints on the certificates that you use in the protocol. However, your organisation most likely poses minimal security requirements on the certificates used. As such we do not advocate a method for generating certificates but rather suggest to contact your system administrator for obtaining certificates.
+</details>
 
-#### With SSL/TLS (SSL/TLS certificate as client identifier)
+<details>
+<summary><b>Explanation of Pool and Communicator</b></summary>
 
-This approach does not use the origin of a message (HTTP request) as identifier of a party, but rather the SSL/TLS certificate of that party. This requires a priori exchange of the certificates, but is more robust to more complex (docker) network stacks, proxies, port forwarding, load balancers, IP spoofing, etc.
+A `Pool` represents a generic communication network. It exposes a simple
+interface for sending and receiving messages and objects to other parties. It
+takes care of serialization (turning objects into bytes) and buffering messages.
 
-More specifically, we assume that a certificate has a unique combination of issuer Common Name and S/N and use these components to create a HTTP client identifier. Our assumption is based on the fact that we trust the issuer (TSL assumption) and that the issuer is supposed to hand out end-user certificates with different serial numbers.
+A `Pool` uses a `Communicator` which is a generic communication layer. It
+implements the actual networking code which sends and receives bytes over the
+network.
+
+The `tno.mpc.communication` module includes one `Communicator`, namely the
+`HttpCommunicator` which implements the network layer using the HTTP
+protocol. Every party serves an HTTP server to which other parties can send HTTP
+POST requests to communicate.
+
+</details>
+
+### Lifecycle Management
+
+The `Pool` object has a lifecycle that needs to be managed. More specifically,
+the `Communicator` has a lifecycle, which is managed through the `Pool`.
+
+After creating a `Pool`, but before using it, one must initialize the `Pool`:
 
 ```python
-from tno.mpc.communication import Pool
-
-pool = Pool(key="path/to/own/keyfile", cert="path/to/own/certfile", ca_cert="path/to/cafile")
-pool.add_http_server() # default port=443
-pool.add_http_client("Client 1", "192.168.0.101", port=1234, cert="path/to/client/certfile")
+await pool.initialize()
 ```
 
-Additional dependencies are required in order to load and compare certificates. These can be installed by installing this package with the `tls` extra, e.g. `pip install tno.mpc.communication[tls]`.
+This calls the `Communicator.initialize()` method, which does the required
+setup, which will differ depending on the implementation.
 
-#### Adding clients
+After one is done with using the `Pool`, be sure to call `Pool.shutdown()`:
 
-HTTP clients are identified by an address. The address can be an IP address, but hostnames are also supported. For example, when communicating between two docker containers on the same network, the address that is provided to `pool.add_http_client` can either be the IP address of the client container or the name of the client container.
+```python
+await pool.shutdown()
+```
 
-### Sending, receiving messages
+This ensures that messages queues are empties and the open connections are
+gracefully closed. Furthermore, the `Pool` will log a summary of all network
+traffic for benchmarking purposes.
+
+Tip: Instead of manually managing this lifecycle, you can also use a context
+manager if this fits your use-case, like so
+
+```python
+async with pool:
+    # Do stuff
+```
+
+This will automatically call `pool.initialize()` and `pool.shutdown()`.
+
+### Sending and receiving messages
 
 The library supports sending the following objects through the send and receive methods:
 
@@ -187,31 +241,38 @@ Furthermore, types from several third party libraries are supported (note that t
 - `bitarray` (class) from `bitarray` (library)
 - various types from `gmpy2`
 - `NDArray` from `numpy`
+  - Do note that due to limitations with the serialization library
+    (ormsgpack), numpy arrays are deserialized as nested list.
 - `Dataframe` from `pandas` (requires `pyarrow`)
 
 Under the hood [`ormsgpack`](https://pypi.org/project/ormsgpack) is used, additional options can be activated using the `option` parameter (see, https://github.com/aviramha/ormsgpack#option).
 
-Messages can be sent both synchronously and asynchronously.
-If you do not know which one to use, use the synchronous methods with `await`.
+The following code demonstrates how to use a `Pool` to send and receive
+messages.
 
 ```python
 # Client 0
 await pool.send("Client 1", "Hello!") # Synchronous send message (blocking)
-pool.asend("Client 1", "Hello!")      # Asynchronous send message (non-blocking, schedule send task)
-
 # Client 1
 res = await pool.recv("Client 0") # Receive message synchronously (blocking)
-res = pool.arecv("Client 0")      # Receive message asynchronously (non-blocking, returns Future if message did not arrive yet)
 ```
 
-### Custom message IDs
+### Custom Message IDs
+
+It is possible to set custom message IDs when sending and receiving
+messages. This not only helps in debugging, but it also of importance in any
+program that is slightly non-trivial.
+
+When the sending and receiving of messages is not strictly ordered (such as when
+using `asyncio.gather`), the automatic message IDs are not sufficient to
+determine which message is being replied to.
 
 ```python
 # Client 0
-await pool.send("Client 1", "Hello!", "Message ID 1")
+await pool.send("Client 1", "Hello!", "id1")
 
 # Client 1
-res = await pool.recv("Client 0", "Message ID 1")
+res = await pool.recv("Client 0", "id1") # Will only return messages with `msg_id == "id1"`
 ```
 
 ### Custom serialization logic
@@ -219,24 +280,27 @@ res = await pool.recv("Client 0", "Message ID 1")
 It is also possible to define serialization logic in custom classes and load the logic into the commmunication module. An example is given below. We elaborate on the requirements for such classes after the example.
 
 ```python
-class SomeClass:
+from tno.mpc.communication.packers import (
+    DeserializerOpts,
+    SerializerOpts,
+)
 
-    def serialize(self, **kwargs: Any) -> Dict[str, Any]:
+class SomeClass:
+    def serialize(self, opts: SerializerOpts) -> dict[str, Any]:
         # serialization logic that returns a dictionary
 
     @staticmethod
-    def deserialize(obj: Dict[str, Any], **kwargs: Any) -> 'SomeClass':
+    def deserialize(
+        obj: dict[str, int], opts: SerializerOpts
+    ) -> 'SomeClass':
         # deserialization logic that turns the dictionary produced
         # by serialize back into an object of type SomeClass
 ```
 
 The class needs to contain a `serialize` method and a `deserialize` method. The type annotation is necessary and validated by the
 communication module.
-Next to this, the `**kwargs` argument is also necessary to allow for nested (de)serialization that
-makes use of additional optional keyword arguments. It is not necessary to use any of these optional keyword
-arguments. If one does not make use of the `**kwargs` and also does not make a call to a subsequent
-`Serialization.serialize()` or `Serialization.deserialize()`, it is advised to write
-`**_kwargs: Any` instead of `**kwargs: Any`.
+Next to this, the `opts` argument is also necessary to allow for nested (de)serialization that
+makes use of additional options. Most implementers will only need to pass `opts` into `Serializer.transform_into_nonnative` if they delegate part of the deserialization logic to the `Serializer` (see e.g. `tno.mpc.communication.serializer_plugins.tuple.tuple_deserialize`) or they won't need to use `opts` at all.
 
 To add this logic to the communication module, you have to run the following command at the start of your script. The `check_annotiations` parameter determines whether
 the type hints of the serialization code and the presence of a `**kwargs` parameter are checked.
@@ -285,22 +349,24 @@ Bob also runs on localhost, but uses port 61002.
 ```python
 import asyncio
 
-from tno.mpc.communication import Pool
+from tno.mpc.communication import (
+    Pool,
+    HttpCommunicator,
+)
 
 
-async def async_main():
-    # Create the pool for Alice.
-    # Alice listens on port 61001 and adds Bob as client.
-    pool = Pool()
-    pool.add_http_server(addr="127.0.0.1", port=61001)
-    pool.add_http_client("Bob", addr="127.0.0.1", port=61002)
+async def async_main() -> None:
+    # Create the pool for Alice and add Bob as client.
+    communicator = HttpCommunicator(addr="localhost", port=61001)
+    pool = Pool("Alice", communicator)
+    pool.add_client("Bob", HttpConnection(addr="localhost", port=61002))
 
-    # Alice sends a message to Bob and waits for a reply.
-    # She prints the reply and shuts down the pool
-    await pool.send("Bob", "Hello Bob! This is Alice speaking.")
-    reply = await pool.recv("Bob")
-    print(reply)
-    await pool.shutdown()
+    with pool:
+        # Alice sends a message to Bob and waits for a reply.
+        # She prints the reply and shuts down the pool
+        await pool.send("Bob", "Hello Bob! This is Alice speaking.")
+        reply = await pool.recv("Bob")
+        print(reply)
 
 
 if __name__ == "__main__":
@@ -312,22 +378,24 @@ if __name__ == "__main__":
 ```python
 import asyncio
 
-from tno.mpc.communication import Pool
+from tno.mpc.communication import (
+    Pool,
+    HttpCommunicator,
+)
 
 
-async def async_main():
-    # Create the pool for Bob.
-    # Bob listens on port 61002 and adds Alice as client.
-    pool = Pool()
-    pool.add_http_server(addr="127.0.0.1", port=61002)
-    pool.add_http_client("Alice", addr="127.0.0.1", port=61001)
+async def async_main() -> None:
+    # Create the pool for Bob and add Alice as client.
+    communicator = HttpCommunicator(addr="localhost", port=61002)
+    pool = Pool("Bob", communicator)
+    pool.add_client("Alice", HttpConnection(addr="localhost", port=61001))
 
-    # Bob waits for a message from Alice and prints it.
-    # He replies and shuts down his pool instance.
-    message = await pool.recv("Alice")
-    print(message)
-    await pool.send("Alice", "Hello back to you, Alice!")
-    await pool.shutdown()
+    async with pool:
+        # Bob waits for a message from Alice and prints it.
+        # He replies and shuts down his pool instance.
+        message = await pool.recv("Alice")
+        print(message)
+        await pool.send("Alice", "Hello back to you, Alice!"))
 
 
 if __name__ == "__main__":
@@ -335,10 +403,6 @@ if __name__ == "__main__":
 ```
 
 To run this example, run each of the files in a separate terminal window.
-Note that if `alice.py` is started prior to `bob.py`, it will throw a `ClientConnectorError`.
-Namely, Alice tries to send a message to port 61002, which has not been opened by Bob yet.
-After starting `bob.py`, the error disappears.
-
 The outputs in the two terminals will be the following:
 
 ```bash
@@ -356,11 +420,12 @@ add the line `logging.basicConfig(level=logging.INFO)` before `asyncio.run`. If 
 
 ## Test fixtures
 
-The `tno.mpc.communication` package exports several pytest fixtures as pytest plugins to facilitate the user in testing with pool objects. The fixtures take care of all configuration and clean-up of the pool objects so that you don't have to worry about that.
+The `tno.mpc.communication[pytest]` package exports several pytest fixtures as pytest plugins to facilitate the user in testing with pool objects. The fixtures take care of all configuration and clean-up of the pool objects so that you don't have to worry about that.
 
-Usage:
+For integration testing, you can use the `http_pool_*` fixtures which are
+properly implemented using `HttpCommunicator` and thus perform networking.
 
-```py
+```python
 # test_my_module.py
 import pytest
 from typing import Callable
@@ -383,8 +448,88 @@ def test_with_variable_pools(
     # ... your code
 ```
 
+For most unit tests, it may suffice to use a mock implementation of a `Pool`
+that works as expected but doesn't actually use networking. Because of this,
+it's much faster. To use the mock pools, simply request `mock_pool_duo` instead
+of `http_pool_duo` and `mock_pool_group_factory` instead of
+`http_pool_group_factory`.
+
 ### Fixture scope
 
-The scope of the fixtures can be set dynamically through the `--fixture-pool-scope` [option to pytest](https://docs.pytest.org/en/7.1.x/reference/reference.html#configuration-options). _Note that this will also change the scope of the global `event_loop` fixture that is provided by `pytest-asyncio`._ By default, in line with `pytest_asyncio`, the scope of all our fixtures is `"function"`. We advise to configure a larger scope (e.g. `"session"`, `"package"` or `"module"`) when possible to reduce test set-up and teardown time.
+The scope of our fixtures defaults to the default fixture loop scope of `pytest-asyncio`, which can be set by configuring `asyncio_default_fixture_loop_scope`. Alternatively, our fixtures' scope can be set dynamically through the `--fixture-pool-scope` [option to pytest](https://docs.pytest.org/en/7.1.x/reference/reference.html#configuration-options). The scope provided through `--fixture-pool-scope` cannot be larger than the scope of `asyncio_default_fixture_loop_scope`.
 
-Our fixtures pass `True` to the `port_reuse` argument of `aiohttp.web.TCPSite`. Their [documentation](https://docs.aiohttp.org/en/stable/web_reference.html?highlight=reuse_port#aiohttp.web.TCPSite) states that this option is not supported on Windows (outside of WSL). If you experience any issues, please disable the plugin by adding `-p no:pytest_tno.tno.mpc.communication.pytest_pool_fixtures` to your pytest configuration. Note that without `port_reuse` the tests may crash, as the test may try to bind to ports which may not have been freed by the operating system. For more reliable testing, run the tests on a WSL / Linux platform.
+_IMPORTANT: `pytest-asyncio` differentiates between two loop scopes: `asyncio_default_fixture_loop_scope` and `asyncio_default_fixture_loop_scope`. Both should have the same value for our fixtures to work properly!_
+
+We advise to configure a larger scope (e.g. `"session"`, `"package"` or `"module"`) when possible to reduce test set-up and teardown time. Example `pyproject.toml` configuration:
+
+```toml
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+```
+
+## Migrating from v4 to v5
+
+### Instantiation of `Pool`
+
+The main change is the introduction of the `Communicator` through which the
+networking is configured. The following example shows how to rewrite your
+current code:
+
+```python
+# --+ Old +---------------------------------------------------------------------
+pool = Pool()
+pool.add_http_server(addr="localhost", port=61001)
+pool.add_http_client("Bob", addr="localhost", port=61002)
+
+# --+ New +---------------------------------------------------------------------
+communicator = HttpCommunicator(addr="localhost", port=61001)
+pool = Pool("Alice", communicator) # It is now required to specify a Pool's own name
+pool.add_client("Bob", HttpConnection(addr="localhost", port=61002)) # Clients must be added before initialization
+await pool.initialize() # It is now required to initialize a pool. We recommend using the contextmanager syntax instead (`async with pool`)
+```
+
+Furthermore, the `Pool.asend`, `Pool.arecv` and `Pool.async_broadcast` methods
+have been removed, due to the problems that they caused and the complexity that
+they introduce. Use the `async` methods `Pool.send`, `Pool.recv` and
+`Pool.broadcast` methods instead.
+
+### Asynchronous operations removed
+
+The `Pool.asend`, `Pool.arecv` and `Pool.async_broadcast` methods have been
+removed, as they were rarely used.
+
+If you wish to reconstruct the behaviour of `Pool.asend`, you can do the
+following:
+
+```python
+task = asyncio.create_task(Pool.send("Bob", "Hello!"))
+```
+
+Be sure to keep a reference to the task and properly await or cancel it before
+shutting down the pool to avoid dangling coroutines.
+
+### Serialization
+
+The interface of `SupportsSerialization` has been slightly changed to provide
+better typing.
+
+```python
+# --+ Old +---------------------------------------------------------------------
+class SomeClass:
+    def serialize(self, **kwargs: Any) -> dict[str, Any]: ...
+    def deserialize(self, obj: dict[str, Any], **kwargs: Any) -> 'SomeClass': ...
+
+# --+ New +---------------------------------------------------------------------
+from tno.mpc.communication.packers.serialization import SerializerOpts, DeserializerOpts
+
+class SomeClass:
+    def serialize(self, opts: SerializerOpts) -> dict[str, Any]: ...
+
+    @staticmethod
+    def deserialize(obj: dict[str, int], opts: DeserializerOpts) -> 'SomeClass': ...
+```
+
+### Miscellaneous
+
+- The extra dependency group `gmpy2` has renamed to `gmpy`.

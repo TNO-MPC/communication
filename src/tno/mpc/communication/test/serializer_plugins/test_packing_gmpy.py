@@ -14,7 +14,7 @@ import numpy as np
 import ormsgpack
 
 from tno.mpc.communication.serializer_plugins.gmpy import GmpyTypes, typeguard_ignore
-from tno.mpc.communication.test.test_packing import pack_unpack_test
+from tno.mpc.communication.test.serializer_plugins.test_packing import pack_unpack_test
 
 
 @typeguard_ignore
@@ -57,7 +57,7 @@ def test_gmpy_serialization_numpy() -> None:
     """
     pack_unpack_test(
         np.array([gmpy2.mpz(2**2048)] * 42),
-        np.array_equal,
+        comparator=np.array_equal,
         serial_option=ormsgpack.OPT_SERIALIZE_NUMPY,
     )
 
@@ -68,7 +68,7 @@ def test_gmpy_serialization_numpy_ndarray() -> None:
     """
     pack_unpack_test(
         np.array([[gmpy2.mpz(2**2048)] * 42] * 3),
-        np.array_equal,
+        comparator=np.array_equal,
         serial_option=ormsgpack.OPT_SERIALIZE_NUMPY,
     )
 
@@ -78,7 +78,7 @@ def test_gmpy_serialization_pandas_series() -> None:
     Tests packing and unpacking of a pandas series
     """
     dataframe = pd.Series(list(map(gmpy2.mpz, (1, 2, 3))), index=["a", "b", "c"])
-    pack_unpack_test(dataframe, lambda df1, df2: df1.equals(df2))
+    pack_unpack_test(dataframe, comparator=lambda df1, df2: df1.equals(df2))
 
 
 def test_gmpy_serialization_pandas_dataframe() -> None:
@@ -89,4 +89,4 @@ def test_gmpy_serialization_pandas_dataframe() -> None:
         {"key1": list(map(gmpy2.mpz, (1, 2, 3))), "key2": "str_value"},
         index=["a", "b", "c"],
     )
-    pack_unpack_test(dataframe, lambda df1, df2: df1.equals(df2))
+    pack_unpack_test(dataframe, comparator=lambda df1, df2: df1.equals(df2))

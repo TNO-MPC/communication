@@ -3,14 +3,17 @@
 ormsgpack.packb(..., option=(ormsgpack.OPT_SERIALIZE_NUMPY, ...)) fails.
 """
 
+# pylint: disable=unused-argument
+
 from __future__ import annotations
 
 from typing import Any
 
+from tno.mpc.communication import Serializer
 from tno.mpc.communication.functions import (
     redirect_importerror_oserror_to_optionalimporterror,
 )
-from tno.mpc.communication.serialization import Serialization
+from tno.mpc.communication.packers import DeserializerOpts, SerializerOpts
 
 with redirect_importerror_oserror_to_optionalimporterror():
     import numpy as np
@@ -18,30 +21,32 @@ with redirect_importerror_oserror_to_optionalimporterror():
 
 
 # called only if ormsgpack fails serializing (see module docstring)
-def numpy_serialize(obj: npt.NDArray[Any], **_kwargs: Any) -> dict[str, Any]:
-    r"""
+def numpy_serialize(
+    obj: npt.NDArray[Any],
+    opts: SerializerOpts,
+) -> dict[str, Any]:
+    """
     Function for serializing numpy object arrays
 
     :param obj: numpy object to serialize
-    :param \**_kwargs: optional extra keyword arguments
+    :param opts: options to change the behaviour of the serialization.
     :return: serialized object
     """
     return {"values": obj.tolist(), "shape": obj.shape}
 
 
 def numpy_deserialize(
-    obj: dict[str, Any], use_pickle: bool, **_kwargs: Any
+    obj: dict[str, Any], opts: DeserializerOpts
 ) -> npt.NDArray[np.object_]:
-    r"""
+    """
     Function for serializing numpy object arrays
 
     :param obj: numpy object to serialize
-    :param use_pickle: set to True to enable serialization fallback to pickle
-    :param \**_kwargs: optional extra keyword arguments
+    :param opts: options to change the behaviour of the serialization.
     :return: deserialized object
     """
     # ormsgpack can handle native numpy dtypes
-    obj_dict = Serialization.deserialize(obj, use_pickle=use_pickle)
+    obj_dict = Serializer.transform_into_nonnative(obj, opts)
     if not obj_dict["shape"]:
         return np.array(obj_dict["values"])
 
@@ -55,6 +60,6 @@ def register() -> None:
     """
     Register numpy serializer and deserializer.
     """
-    Serialization.register(
+    Serializer.register(
         numpy_serialize, numpy_deserialize, np.ndarray.__name__, check_annotations=False
     )

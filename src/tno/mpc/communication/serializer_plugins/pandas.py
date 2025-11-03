@@ -2,6 +2,8 @@
 (De)serialization logic for pandas objects.
 """
 
+# pylint: disable=unused-argument
+
 from __future__ import annotations
 
 import datetime
@@ -10,17 +12,17 @@ import sys
 import warnings
 from typing import Any, Callable, cast
 
-from packaging.version import parse
-
+from tno.mpc.communication import Serializer
 from tno.mpc.communication.exceptions import OptionalImportError
 from tno.mpc.communication.functions import (
     redirect_importerror_oserror_to_optionalimporterror,
 )
-from tno.mpc.communication.serialization import Serialization
+from tno.mpc.communication.packers import DeserializerOpts, SerializerOpts
 
 with redirect_importerror_oserror_to_optionalimporterror():
     import numpy as np
-    import pandas as pd
+    import pandas as pandas  # not as 'pd', as that messes up serialization._get_signature for Python 3.9
+    from packaging.version import parse
     from pandas import DataFrame, Series
 
 try:
@@ -43,21 +45,22 @@ ARROW_SUPPORTED_TYPES = (
 )
 TEMP_COLUMN_NAME = "TNO_MPC_COMMUNICATION_TEMPNAME"
 # pandas 2.1.0 deprecates applymap
-DF_MAPPING_METHOD = "map" if parse(pd.__version__) >= parse("2.1.0") else "applymap"
+DF_MAPPING_METHOD = "map" if parse(pandas.__version__) >= parse("2.1.0") else "applymap"
 
 
-def pandas_serialize_dataframe(  # pylint: disable=missing-raises-doc
-    obj: DataFrame, use_pickle: bool, **kwargs: Any
+def pandas_serialize_dataframe(
+    obj: DataFrame,
+    opts: SerializerOpts,
 ) -> bytes | dict[str, Any]:
-    r"""
+    """
     Function for serializing pandas dataframes
 
     Attempt to use parquet for smaller serialized dataframe, but fallback to dictionaries
     otherwise.
 
     :param obj: pandas object to serialize
-    :param use_pickle: set to True to enable serialization fallback to pickle
-    :param \**kwargs: optional extra keyword arguments
+    :param opts: options to change the behaviour of the serialization.
+    :raises ValueError: Column names are not of type <str>.
     :return: serialized dataframe
     """
 
@@ -76,11 +79,11 @@ def pandas_serialize_dataframe(  # pylint: disable=missing-raises-doc
             isinstance(x, ARROW_SUPPORTED_TYPES)
             and not (isinstance(x, int) and x.bit_length() > max_int_bit_length)
         )
-        obj_partially_serialized: pd.DataFrame = getattr(obj, DF_MAPPING_METHOD)(
+        obj_partially_serialized: pandas.DataFrame = getattr(obj, DF_MAPPING_METHOD)(
             lambda x: (
                 x
                 if is_parquet_serializable(x)
-                else Serialization.serialize(x, use_pickle=use_pickle, **kwargs)
+                else Serializer.transform_into_native(x, opts=opts)
             ),
         )
         try:
@@ -104,21 +107,21 @@ def pandas_serialize_dataframe(  # pylint: disable=missing-raises-doc
 
 
 def pandas_deserialize_dataframe(
-    obj: bytes | dict[str, Any], use_pickle: bool, **_kwargs: Any
+    obj: bytes | dict[str, Any],
+    opts: DeserializerOpts,
 ) -> DataFrame:
-    r"""
+    """
     Function for deserializing pandas dataframe
 
     :param obj: pandas dataframe to deserialize
-    :param use_pickle: set to True to enable serialization fallback to pickle
-    :param \**_kwargs: optional extra keyword arguments
+    :param opts: options to change the behaviour of the serialization.
     :raise ImportError: Object was serialized with parquet, but required dependencies for
         deserialization are missing.
     :return: deserialized dataframe
     """
     if isinstance(obj, bytes):
         try:
-            dataframe = pd.read_parquet(io.BytesIO(obj))
+            dataframe = pandas.read_parquet(io.BytesIO(obj))
         except ImportError as exc:
             raise ImportError(
                 "The pandas object was serialized to parquet, but the required dependencies for "
@@ -126,10 +129,10 @@ def pandas_deserialize_dataframe(
                 "tno.mpc.communication[pandas]."
             ) from exc
     else:  # Dataframe is serialized as dictionary
-        dataframe = pd.DataFrame(**obj)
-    fully_deserialized_df: pd.DataFrame = getattr(dataframe, DF_MAPPING_METHOD)(
+        dataframe = pandas.DataFrame(**obj)
+    fully_deserialized_df: pandas.DataFrame = getattr(dataframe, DF_MAPPING_METHOD)(
         lambda x: (
-            Serialization.deserialize(x, use_pickle=use_pickle)
+            Serializer.transform_into_nonnative(x, opts)
             if isinstance(x, dict) and "type" in x and "data" in x
             else x
         )
@@ -137,32 +140,37 @@ def pandas_deserialize_dataframe(
     return fully_deserialized_df
 
 
-def pandas_serialize_series(obj: Series[Any], **_kwargs: Any) -> bytes | dict[str, Any]:
-    r"""
+def pandas_serialize_series(
+    obj: Series,
+    opts: SerializerOpts,
+) -> bytes | dict[str, Any]:
+    """
     Function for serializing pandas series
 
     :param obj: pandas series to serialize
-    :param \**_kwargs: optional extra keyword arguments
+    :param opts: options to change the behaviour of the serialization.
     :return: serialized series
     """
     if obj.name is None:
         return pandas_serialize_dataframe(
-            pd.DataFrame(obj, columns=[TEMP_COLUMN_NAME]), **_kwargs
+            pandas.DataFrame(obj, columns=[TEMP_COLUMN_NAME]),
+            opts,
         )
-    return pandas_serialize_dataframe(pd.DataFrame(obj), **_kwargs)
+    return pandas_serialize_dataframe(pandas.DataFrame(obj), opts)
 
 
 def pandas_deserialize_series(
-    obj: bytes | dict[str, Any], **kwargs: Any
-) -> Series:  # type: ignore[type-arg]
-    r"""
+    obj: bytes | dict[str, Any],
+    opts: DeserializerOpts,
+) -> Series:
+    """
     Function for deserializing pandas series
 
     :param obj: pandas series to deserialize
-    :param \**kwargs: optional extra keyword arguments
+    :param opts: options to change the behaviour of the serialization.
     :return: deserialized series
     """
-    dataframe = pandas_deserialize_dataframe(obj, **kwargs)
+    dataframe = pandas_deserialize_dataframe(obj, opts)
     series = dataframe.iloc[:, 0]
     if series.name == TEMP_COLUMN_NAME:
         series.name = None
@@ -170,46 +178,44 @@ def pandas_deserialize_series(
 
 
 def pandas_serialize_timestamp(
-    obj: pd.Timestamp, use_pickle: bool, **_kwargs: Any
+    obj: pandas.Timestamp,
+    opts: SerializerOpts,
 ) -> str:
-    r"""
+    """
     Function for serializing pandas timestamp
 
     :param obj: pandas timestamp to serialize
-    :param use_pickle: set to True to enable serialization fallback to pickle
-    :param \**_kwargs: optional extra keyword arguments
+    :param opts: options to change the behaviour of the serialization.
     :return: serialized timestamp
     """
     return obj.to_pydatetime().isoformat()
 
 
-def pandas_deserialize_timestamp(
-    obj: str, use_pickle: bool, **kwargs: Any
-) -> pd.Timestamp:
-    r"""
+def pandas_deserialize_timestamp(obj: str, opts: DeserializerOpts) -> pandas.Timestamp:
+    """
     Function for deserializing pandas timestamp
 
     :param obj: pandas timestamp to deserialize
-    :param use_pickle: set to True to enable serialization fallback to pickle
-    :param \**kwargs: optional extra keyword arguments
+    :param opts: options to change the behaviour of the serialization.
     :return: deserialized timestamp
     """
-    return pd.Timestamp(obj)
+    return pandas.Timestamp(obj)
 
 
 def register() -> None:
     """
     Register pandas serializer and deserializer.
     """
-    Serialization.register(
-        pandas_serialize_dataframe, pandas_deserialize_dataframe, pd.DataFrame.__name__
+    Serializer.register(
+        pandas_serialize_dataframe,
+        pandas_deserialize_dataframe,
+        pandas.DataFrame.__name__,
     )
-    Serialization.register(
-        pandas_serialize_series, pandas_deserialize_series, pd.Series.__name__
+    Serializer.register(
+        pandas_serialize_series, pandas_deserialize_series, pandas.Series.__name__
     )
-    Serialization.register(
+    Serializer.register(
         pandas_serialize_timestamp,
         pandas_deserialize_timestamp,
-        pd.Timestamp.__name__,
-        check_annotations=False,
+        pandas.Timestamp.__name__,
     )

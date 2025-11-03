@@ -2,19 +2,21 @@
 This module tests the communication between three communication pools with SSL enabled
 """
 
+# pylint: disable=useless-param-doc
+
 from __future__ import annotations
 
+import ssl
 from collections.abc import AsyncIterator
-from typing import Any, Callable
+from pathlib import Path
+from typing import Any, Callable, cast
 
 import pytest
 import pytest_asyncio
 from aiohttp import ClientConnectorCertificateError
 
-from pytest_tno.tno.mpc.communication.pytest_pool_fixtures import get_available_ports
-from tno.mpc.communication import Pool
-from tno.mpc.communication.test.conftest import TEST_CERTIFICATE_DIR
-from tno.mpc.communication.test.test_pool_http_3p import assert_send_message
+from tno.mpc.communication import HttpCommunicator, HttpConnection, Pool
+from tno.mpc.communication.test.util import TEST_CERTIFICATE_DIR, assert_send_message
 
 CERT_TRUSTED_SERVER = {
     "key": TEST_CERTIFICATE_DIR / "party_0.pem",
@@ -31,6 +33,44 @@ CERT_UNTRUSTED = {
     "cert": TEST_CERTIFICATE_DIR / "party_untrusted.crt",
     "ca_cert": TEST_CERTIFICATE_DIR / "ca-untrusted.crt",
 }
+
+
+def create_ssl_context(
+    key: Path | str, cert: Path | str, ca_cert: Path | str
+) -> tuple[ssl.SSLContext, ssl.SSLContext]:
+    """
+    Initialize a server SSLContext and a client SSLContext, with a custom
+    Certificate Authority.
+
+    The key and certificate paths are provided as arguments to ssl.SSLContext.load_cert_chain.
+    The ca_cert is provided as argument to ssl.SSLContext.load_verify_locations. Please refer
+    to https://docs.python.org/3/library/ssl.html#certificates to learn more about the expected
+    files and their format.
+
+    :param key: Path to the key to use in the ssl context.
+    :param cert: Path to the certificate to use in the ssl context.
+    :param ca_cert: Path to the certificate authority (CA) certificate to use
+        in the ssl context
+    :return: A tuple of two ssl.SSLContext, the first being the server context
+        intended for use in the HTTP Server and the second being the client
+        context intended to be used for HTTP Client requests, and the second
+    """
+
+    def _create_with_purpose(purpose: ssl.Purpose) -> ssl.SSLContext:
+        ctx = ssl.create_default_context(purpose=purpose)
+        ctx.load_cert_chain(certfile=cast(str, cert), keyfile=cast(str, key))
+        ctx.load_verify_locations(cafile=ca_cert)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        return ctx
+
+    client_context = _create_with_purpose(ssl.Purpose.SERVER_AUTH)
+    server_context = _create_with_purpose(ssl.Purpose.CLIENT_AUTH)
+
+    return (
+        server_context,
+        client_context,
+    )
 
 
 @pytest_asyncio.fixture(name="_pool_factory", scope="function")
@@ -52,7 +92,8 @@ async def fixture_pool_factory_function_scope() -> AsyncIterator[Callable[..., P
         :param \**kwargs: Keyword arguments to Pool.
         :return: Instantiated Pool.
         """
-        pool = Pool(*args, **kwargs)
+        communicator = HttpCommunicator(*args, **kwargs)
+        pool = Pool(f"local{len(pools)}", communicator)
         pools.append(pool)
         return pool
 
@@ -63,48 +104,40 @@ async def fixture_pool_factory_function_scope() -> AsyncIterator[Callable[..., P
 
 
 @pytest.mark.asyncio
-async def test_https_pool_no_mutual_tls_delivers_messages(
-    _pool_factory: Callable[..., Pool],
-) -> None:
-    """
-    Tests sending and receiving of multiple messages between two communication pools using SSL/TLS
-    verification of the server only.
-
-    :param _pool_factory: Pool factory fixture.
-    """
-    sender = _pool_factory(**CERT_TRUSTED_SERVER)
-    receiver = _pool_factory(**CERT_TRUSTED_CLIENT)
-    sender_port, receiver_port = get_available_ports(2)
-    sender.add_http_server(sender_port)
-    receiver.add_http_server(receiver_port)
-    sender.add_http_client("local1", "127.0.0.1", receiver_port, cert=None)
-    receiver.add_http_client("local0", "127.0.0.1", sender_port, cert=None)
-
-    await assert_send_message((sender, receiver), 0, 1, "Secure hello to you!")
-    await assert_send_message((sender, receiver), 1, 0, "Secure hello to you too!")
-
-
-@pytest.mark.asyncio
 async def test_https_pool_with_mutual_tls_delivers_messages(
     _pool_factory: Callable[..., Pool],
+    unused_tcp_port_factory: Callable[[], int],
 ) -> None:
     """
     Tests sending and receiving of multiple messages between two communication pools using mutual
     SSL/TLS verification.
 
     :param _pool_factory: Pool factory fixture.
+    :param unused_tcp_port_factory: pytest_asyncio fixture for getting unused tcp_ports.
     """
-    sender = _pool_factory(**CERT_TRUSTED_SERVER)
-    receiver = _pool_factory(**CERT_TRUSTED_CLIENT)
-    sender_port, receiver_port = get_available_ports(2)
-    sender.add_http_server(sender_port)
-    receiver.add_http_server(receiver_port)
-    sender.add_http_client(
-        "local1", "127.0.0.1", receiver_port, cert=CERT_TRUSTED_CLIENT["cert"]
+    sender_port, receiver_port = (unused_tcp_port_factory() for _ in range(2))
+    send_server_ctx, send_client_ctx = create_ssl_context(**CERT_TRUSTED_SERVER)
+    recv_server_ctx, recv_client_ctx = create_ssl_context(**CERT_TRUSTED_CLIENT)
+    sender = _pool_factory(
+        port=sender_port,
+        ssl_server_context=send_server_ctx,
+        ssl_client_context=send_client_ctx,
     )
-    receiver.add_http_client(
-        "local0", "127.0.0.1", sender_port, cert=CERT_TRUSTED_SERVER["cert"]
+    receiver = _pool_factory(
+        port=receiver_port,
+        ssl_server_context=recv_server_ctx,
+        ssl_client_context=recv_client_ctx,
     )
+    sender.add_client(
+        "local1",
+        HttpConnection("localhost", receiver_port, cert=CERT_TRUSTED_CLIENT["cert"]),
+    )
+    receiver.add_client(
+        "local0",
+        HttpConnection("localhost", sender_port, cert=CERT_TRUSTED_SERVER["cert"]),
+    )
+    await sender.initialize()
+    await receiver.initialize()
 
     await assert_send_message((sender, receiver), 0, 1, "Doubly secure hello to you!")
     await assert_send_message(
@@ -115,20 +148,33 @@ async def test_https_pool_with_mutual_tls_delivers_messages(
 @pytest.mark.asyncio
 async def test_https_pool_fails_if_server_pool_has_unauthorized_certificate(
     _pool_factory: Callable[..., Pool],
+    unused_tcp_port_factory: Callable[[], int],
 ) -> None:
     """
     Assert that mutual TLS communication fails if the server's certificate is signed by an unknown
     CA.
 
     :param _pool_factory: Pool factory fixture.
+    :param unused_tcp_port_factory: pytest_asyncio fixture for getting unused tcp_ports.
     """
-    sender = _pool_factory(**CERT_UNTRUSTED)
-    receiver = _pool_factory(**CERT_TRUSTED_CLIENT)
-    sender_port, receiver_port = get_available_ports(2)
-    sender.add_http_server(sender_port)
-    receiver.add_http_server(receiver_port)
-    sender.add_http_client("local1", "127.0.0.1", receiver_port)
-    receiver.add_http_client("local0", "127.0.0.1", sender_port)
+    sender_port, receiver_port = (unused_tcp_port_factory() for _ in range(2))
+
+    send_server_ctx, send_client_ctx = create_ssl_context(**CERT_UNTRUSTED)
+    recv_server_ctx, recv_client_ctx = create_ssl_context(**CERT_TRUSTED_SERVER)
+    sender = _pool_factory(
+        port=sender_port,
+        ssl_server_context=send_server_ctx,
+        ssl_client_context=send_client_ctx,
+    )
+    receiver = _pool_factory(
+        port=receiver_port,
+        ssl_server_context=recv_server_ctx,
+        ssl_client_context=recv_client_ctx,
+    )
+    sender.add_client("local1", HttpConnection("localhost", receiver_port))
+    receiver.add_client("local0", HttpConnection("localhost", sender_port))
+    await sender.initialize()
+    await receiver.initialize()
 
     with pytest.raises(ClientConnectorCertificateError):
         await assert_send_message(
@@ -139,24 +185,38 @@ async def test_https_pool_fails_if_server_pool_has_unauthorized_certificate(
 @pytest.mark.asyncio
 async def test_https_pool_fails_if_client_pool_has_unauthorized_certificate(
     _pool_factory: Callable[..., Pool],
+    unused_tcp_port_factory: Callable[[], int],
 ) -> None:
     """
     Assert that mutual TLS communication fails if the client's certificate is signed by an unknown
     CA.
 
     :param _pool_factory: Pool factory fixture.
+    :param unused_tcp_port_factory: pytest_asyncio fixture for getting unused tcp_ports.
     """
-    sender = _pool_factory(**CERT_TRUSTED_SERVER)
-    receiver = _pool_factory(**CERT_UNTRUSTED)
-    sender_port, receiver_port = get_available_ports(2)
-    sender.add_http_server(sender_port)
-    receiver.add_http_server(receiver_port)
-    sender.add_http_client(
-        "local1", "127.0.0.1", receiver_port, cert=CERT_UNTRUSTED["cert"]
+    sender_port, receiver_port = (unused_tcp_port_factory() for _ in range(2))
+    send_server_ctx, send_client_ctx = create_ssl_context(**CERT_TRUSTED_SERVER)
+    recv_server_ctx, recv_client_ctx = create_ssl_context(**CERT_UNTRUSTED)
+    sender = _pool_factory(
+        port=sender_port,
+        ssl_server_context=send_server_ctx,
+        ssl_client_context=send_client_ctx,
     )
-    receiver.add_http_client(
-        "local0", "127.0.0.1", sender_port, cert=CERT_TRUSTED_SERVER["cert"]
+    receiver = _pool_factory(
+        port=receiver_port,
+        ssl_server_context=recv_server_ctx,
+        ssl_client_context=recv_client_ctx,
     )
+    sender.add_client(
+        "local1",
+        HttpConnection("localhost", receiver_port, cert=CERT_UNTRUSTED["cert"]),
+    )
+    receiver.add_client(
+        "local0",
+        HttpConnection("localhost", sender_port, cert=CERT_TRUSTED_SERVER["cert"]),
+    )
+    await sender.initialize()
+    await receiver.initialize()
 
     with pytest.raises(ClientConnectorCertificateError):
         await assert_send_message(
